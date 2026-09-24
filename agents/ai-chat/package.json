@@ -1,0 +1,10 @@
+{
+  "name": "eve-idfon-channel-spike",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "clean": "rm -rf .output dist"
+  },
+  "dependencies": { "eve": "0.54.5" }
+}
