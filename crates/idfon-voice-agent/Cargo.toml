@@ -1,0 +1,21 @@
+[package]
+name = "idfon-voice-agent"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+
+[[bin]]
+name = "eve-idfon-voice"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+ed25519-dalek = "3"
+eve-idfon = { path = "../eve-idfon" }
+idfon-core = { path = "../idfon-core" }
+idfon-live-media = { path = "../idfon-live-media" }
+idfon-protocol = { path = "../idfon-protocol" }
+idfon-voice = { path = "../idfon-voice", features = ["gateway"] }
+iroh = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
