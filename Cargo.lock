@@ -2636,7 +2636,7 @@ dependencies = [
 [[package]]
 name = "hang"
 version = "0.21.19"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "derive_more",
@@ -4397,7 +4397,7 @@ dependencies = [
 [[package]]
 name = "kio"
 version = "0.6.3"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "loom",
  "smallvec",
@@ -4664,7 +4664,7 @@ checksum = "21909324aa58f5c284d91cac514c6d081210901dc372d7c8ea6a9d7e0406097a"
 [[package]]
 name = "moq-audio"
 version = "0.1.18"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "block2",
  "bytes",
@@ -4695,7 +4695,7 @@ dependencies = [
 [[package]]
 name = "moq-binary"
 version = "0.1.18"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "kio 0.6.3",
@@ -4708,7 +4708,7 @@ dependencies = [
 [[package]]
 name = "moq-flate"
 version = "0.2.0"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "flate2",
@@ -4718,7 +4718,7 @@ dependencies = [
 [[package]]
 name = "moq-json"
 version = "0.5.16"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "kio 0.6.3",
@@ -4734,7 +4734,7 @@ dependencies = [
 [[package]]
 name = "moq-loc"
 version = "0.2.27"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "moq-net",
@@ -4770,7 +4770,7 @@ dependencies = [
 [[package]]
 name = "moq-msf"
 version = "0.5.1"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "serde",
  "serde_json",
@@ -4780,7 +4780,7 @@ dependencies = [
 [[package]]
 name = "moq-mux"
 version = "0.10.19"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4815,7 +4815,7 @@ dependencies = [
 [[package]]
 name = "moq-net"
 version = "0.3.18"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "arrayvec",
  "bytes",
@@ -4835,7 +4835,7 @@ dependencies = [
 [[package]]
 name = "moq-nvenc"
 version = "0.1.2"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "cudarc",
  "libloading 0.9.0",
@@ -4845,7 +4845,7 @@ dependencies = [
 [[package]]
 name = "moq-pattern"
 version = "0.1.3"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "serde",
 ]
@@ -4853,7 +4853,7 @@ dependencies = [
 [[package]]
 name = "moq-sock"
 version = "0.2.0"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "core_affinity",
  "libc",
@@ -4866,7 +4866,7 @@ dependencies = [
 [[package]]
 name = "moq-tokio"
 version = "0.19.31"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bytes",
  "futures",
@@ -4897,7 +4897,7 @@ dependencies = [
 [[package]]
 name = "moq-v4l"
 version = "0.1.0"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
@@ -4921,7 +4921,7 @@ dependencies = [
 [[package]]
 name = "moq-video"
 version = "0.1.18"
-source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#a40260df4f067a510cf62269e629b0e1124f5b95"
+source = "git+https://github.com/donpark/moq?branch=loss-recovery-release#7284ff015ef967c2d58af01b31b1eed5dbc3d3fa"
 dependencies = [
  "anyhow",
  "block2",
