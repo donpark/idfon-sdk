@@ -156,6 +156,13 @@ components. See the platform-specific docs for details:
 - [Native SDK client](native/README.md)
 - iOS client (`ios/`)
 
+Human-to-human calls use Opus by default. LiquidCodec (24 kHz mono, 80 ms
+frames, a neural speech codec run on Core ML) can be chosen per contact on
+both apps. Its models download from the idfon edge when first needed, and a call
+falls back to Opus only if the download or load fails. The codec lives in the
+shared Swift package `ports/liquid-swift`. The design notes and measurements
+are in `idfon-home/docs/liquidcodec.md`.
+
 ## Eve extension and agents
 
 Build the `eve-idfon` extension and the agents under `agents/` separately from
