@@ -37,12 +37,21 @@ strip = "symbols"
 # branch so their internal path-deps unify to a single instance each (mixing
 # two git sources splits moq_net/moq_mux types). Update procedure:
 # docs/moq-fork.md.
-hang = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-audio = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-mux = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-net = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-video = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-tokio = { git = "https://github.com/donpark/moq", branch = "loss-recovery-release" }
-moq-media = { git = "https://github.com/n0-computer/iroh-live", rev = "dd80d44efb587f31deed14fc11eeaa12946c9fd2" }
+hang = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-audio = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-mux = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-net = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-video = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-tokio = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
+moq-media = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
 # Match the MoQ development snapshot selected by the current iroh-live rev.
-iroh-moq = { git = "https://github.com/n0-computer/iroh-live", rev = "dd80d44efb587f31deed14fc11eeaa12946c9fd2" }
+iroh-moq = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
+
+# iroh-live fork (donpark/iroh-live `audio-renditions`, off the dd80d44 pin above):
+# moq-media publishes several audio renditions so a subscriber can pick and switch
+# codecs mid-call (idfon-home docs/liquidcodec.md). Every iroh-live crate comes
+# from the fork so their shared types stay one instance.
+[patch."https://github.com/n0-computer/iroh-live"]
+moq-media = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
+iroh-moq = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
+iroh-live = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
