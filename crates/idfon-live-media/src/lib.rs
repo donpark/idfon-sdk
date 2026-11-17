@@ -77,7 +77,21 @@ pub fn parse_audio_profile(codec: Option<&str>, sample_rate: Option<u32>) -> Res
             codec: AudioCodec::Pcm,
             sample_rate: 24_000,
         }),
-        _ => anyhow::bail!("unsupported caller audio profile: codec={codec:?} rate={sample_rate:?}"),
+        // LiquidCodec (docs: idfon-home/docs/liquidcodec.md) needs a registered
+        // implementation; a holder without one refuses the call up front.
+        (Some("liquid"), Some(24_000)) => {
+            anyhow::ensure!(
+                moq_audio::external::liquid_available(),
+                "liquid caller audio needs a LiquidCodec implementation, and this holder has none"
+            );
+            Ok(AudioProfile {
+                codec: AudioCodec::Liquid,
+                sample_rate: 24_000,
+            })
+        }
+        _ => {
+            anyhow::bail!("unsupported caller audio profile: codec={codec:?} rate={sample_rate:?}")
+        }
     }
 }
 
@@ -574,6 +588,9 @@ pub async fn publish_audio(
     let mut options = AudioOptions::default();
     options.settings = moq_audio::encode::Settings::new(profile.sample_rate, moq_audio::Layout::Mono);
     options.settings.codec = profile.codec;
+    if profile.codec == AudioCodec::Liquid {
+        options.settings.frame_duration = std::time::Duration::from_millis(80);
+    }
     // DTX: silence costs ~nothing on the wire; the decode side honors it.
     options.settings.dtx = profile.codec == AudioCodec::Opus;
     // In-band FEC: the frame after a hole carries a copy of this one.
