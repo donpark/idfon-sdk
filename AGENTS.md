@@ -77,9 +77,12 @@ add or materially change a doc, update the index.
   `idfon-mcp`; raw views at `<data-dir>/diag/`; edge health at `/_push/health`.
   See `docs/mcp-control.md` + `docs/diag.md`. (2026-11-10: hours were lost
   reconstructing from USB logs what the app was already reporting.)
-- **`rung=0` is an edge problem until proven otherwise.** When the caller's
-  app logs `register → 200` and `ring → 200 rung=0`, the edge found no token
-  or **every APNs send failed** — the apps cannot see which. Read the droplet's
+- **`rung=0` is an edge problem until proven otherwise** — for a call whose
+  ring score should ring or notify (person calls: 80; see `docs/protocol.md`
+  "Ring score"). Below the callee's notify threshold, `rung=0` is correct
+  (silent). When the caller's app logs `register → 200` and
+  `ring → 200 rung=0` for a call that should have pushed, the edge found no
+  token or **every APNs send failed** — the apps cannot see which. Read the droplet's
   edge log (`docker compose logs idfon-edge | grep -E 'idfon.edge.push|apns'`
   in `/srv/idfon-edge`; find the droplet with `doctl compute droplet list`)
   before touching app code. `403 InvalidProviderToken` = wrong
