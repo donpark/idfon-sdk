@@ -74,6 +74,19 @@ add or materially change a doc, update the index.
   `idfon-mcp`; raw views at `<data-dir>/diag/`; edge health at `/_push/health`.
   See `docs/mcp-control.md` + `docs/diag.md`. (2026-11-10: hours were lost
   reconstructing from USB logs what the app was already reporting.)
+- **`rung=0` is an edge problem until proven otherwise.** When the caller's
+  app logs `register → 200` and `ring → 200 rung=0`, the edge found no token
+  or **every APNs send failed** — the apps cannot see which. Read the droplet's
+  edge log (`docker compose logs idfon-edge | grep -E 'idfon.edge.push|apns'`
+  in `/srv/idfon-edge`; find the droplet with `doctl compute droplet list`)
+  before touching app code. `403 InvalidProviderToken` = wrong
+  `--push-apns-key-id` for `edge.apns.p8` (C26, regressed as C28). Compose
+  refuses to start without the id; never reintroduce a default, and run
+  `docs/edge-deploy-checklist.md` §C step 4 after any edge change.
+- **No identifiers in public artifacts.** This repo is public. Keep APNs key
+  ids, push tokens, peer/endpoint ids, call UUIDs, droplet IPs and SSH key
+  names out of commits, PR titles/bodies, issues and docs. Use placeholders
+  (`<key-id>`, `<peer>`) and local files (`~/.idfon/edge.apns.keyid`).
 - **Privacy posture lives in `README.md` ("Privacy").** Keep any new surface
   consistent with it: content end-to-end between the parties, the edge holds
   wake tokens + brief invites only, APNs payloads are identifiers-only,
