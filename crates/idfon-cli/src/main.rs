@@ -227,8 +227,8 @@ enum PeerCmd {
         endpoint_id: Option<String>,
         #[arg(long = "endpoint-addr")]
         endpoint_addr: Option<String>,
-        /// Call handling for this connection: auto | bar | call_kit (auto = the
-        /// shell's default for the contact's kind)
+        /// Legacy call handling, mapped to a ring score: auto | bar (50) |
+        /// call_kit (80). auto = the shell's default for the contact's kind
         #[arg(long = "call-mode", value_name = "MODE")]
         call_mode: Option<String>,
         /// Add from an MCP contact ticket (JSON): fills ref/endpoint fields
@@ -246,8 +246,8 @@ enum PeerCmd {
         endpoint_id: Option<String>,
         #[arg(long = "endpoint-addr")]
         endpoint_addr: Option<String>,
-        /// Call handling for this connection: auto | bar | call_kit (auto = the
-        /// shell's default for the contact's kind)
+        /// Legacy call handling, mapped to a ring score: auto | bar (50) |
+        /// call_kit (80). auto = the shell's default for the contact's kind
         #[arg(long = "call-mode", value_name = "MODE")]
         call_mode: Option<String>,
     },
