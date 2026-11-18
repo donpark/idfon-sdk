@@ -9,13 +9,13 @@
     "clean": "rm -rf .output dist"
   },
   "dependencies": {
-    "ai": "^7.0.170",
-    "eve": "1.0.0-rc.9",
+    "ai": "^7.0.176",
+    "eve": "1.0.2",
     "eve-idfon": "link:../../integrations/eve-idfon",
     "eve-idfon-voice": "link:../../integrations/eve-idfon-voice",
-    "just-bash": "^3.6.0",
+    "just-bash": "^3.6.1",
     "ogg-opus-decoder": "^1.7.5",
-    "ws": "^8.22.2",
+    "ws": "^8.23.0",
     "zod": "^4.6.7"
   }
 }

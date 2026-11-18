@@ -9,10 +9,10 @@
     "clean": "rm -rf .output dist"
   },
   "dependencies": {
-    "eve": "1.0.0-rc.9",
+    "eve": "1.0.2",
     "eve-idfon": "link:../../integrations/eve-idfon",
     "eve-idfon-voice": "link:../../integrations/eve-idfon-voice",
-    "just-bash": "^3.6.0",
+    "just-bash": "^3.6.1",
     "ogg-opus-decoder": "^1.7.5"
   }
 }
