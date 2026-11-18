@@ -19,7 +19,7 @@ add or materially change a doc, update the index.
 ## iOS shipping (TestFlight)
 
 - Read `docs/testflight-plan.md` before shipping. Use **`pnpm ios ship`**
-  (`ios/upload.sh`): bump build number → build dependencies → Release archive →
+  (`ios/upload.sh`): compute build number → build dependencies → Release archive →
   App Store Connect export → gate the exported IPA → upload. Bundle ID:
   `com.idfon.ios`; team: `RV27HPQNMF`. Xcode must have signing access for this team.
 - **Ship only `ios/build/export/Idfon.ipa` after its gates pass.**
@@ -42,9 +42,12 @@ add or materially change a doc, update the index.
   otherwise the script stops with the gated IPA for Transporter. Obtain missing
   credentials through secure secret input; never commit or print them.
   **A successful export is not a successful upload.**
-- Every script run bumps `CURRENT_PROJECT_VERSION` in
-  `ios/Idfon.xcodeproj/project.pbxproj`; include that bump with the changes
-  being shipped. Do not run shipping jobs concurrently in the same checkout.
+- The build number (`CFBundleVersion`) is computed per run from the UTC clock
+  (`yymmdd.HHMM`) and passed to `xcodebuild`; it is never stored, so shipping
+  changes no tracked file. Do not reintroduce a stored counter in
+  `project.pbxproj` (its `CURRENT_PROJECT_VERSION` is a local-build
+  placeholder). `MARKETING_VERSION` stays in the project and changes only on
+  purpose. Do not run shipping jobs concurrently in the same checkout.
   If upload status is uncertain, inspect that build in App Store Connect
   before retrying; do not blindly create another build.
 - Report version/build, IPA path, gate results, and upload/processing status
