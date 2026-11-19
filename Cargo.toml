@@ -27,31 +27,4 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
-[patch.crates-io]
-# Fork branch of moq-dev/moq `main` (post history-rewrite; the old lineage is
-# frozen and has no common ancestor with it) carrying decode-side loss
-# recovery (Decoder::recover + Consumer `conceal`), a working encoder FEC knob
-# (upstream removed theirs as ineffective; ours also sets the loss-rate hint
-# libopus needs to write the LBRR copy), and the shared BitrateControl. Keep
-# the fork patched until these land upstream; all five crates point at the one
-# branch so their internal path-deps unify to a single instance each (mixing
-# two git sources splits moq_net/moq_mux types). Update procedure:
-# docs/moq-fork.md.
-hang = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-audio = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-mux = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-net = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-video = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-tokio = { git = "https://github.com/donpark/moq", branch = "liquid-codec" }
-moq-media = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
-# Match the MoQ development snapshot selected by the current iroh-live rev.
-iroh-moq = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
-
-# iroh-live fork (donpark/iroh-live `audio-renditions`, off the dd80d44 pin above):
-# moq-media publishes several audio renditions so a subscriber can pick and switch
-# codecs mid-call (idfon-home docs/liquidcodec.md). Every iroh-live crate comes
-# from the fork so their shared types stay one instance.
-[patch."https://github.com/n0-computer/iroh-live"]
-moq-media = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
-iroh-moq = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
-iroh-live = { git = "https://github.com/donpark/iroh-live", branch = "audio-renditions" }
+# spike/iroh-live-next: forks dropped; iroh-live and moq come from upstream revs in the crates.
