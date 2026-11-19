@@ -28,39 +28,40 @@ panic = "abort"
 strip = "symbols"
 
 
-# spike/iroh-live-next: TEMPORARY local path patches onto the two forks, until
-# they are pushed and pinned by rev:
-# - moq: ~/dev/worktrees/moq-next, branch liquid-codec-next (LiquidCodec seam, libopus 1.6.1)
-# - iroh-live: ~/dev/worktrees/iroh-live-next, branch audio-renditions-next
+# Forks, pinned by rev (iroh-live upgrade, donpark/idfon#209):
+# - moq: donpark/moq branch liquid-codec-next, on moq-dev/moq 4a6f52248 (the rev
+#   iroh-live pins). LiquidCodec, libopus 1.6.1, opt-in gap recovery, Opus FEC knob.
+# - iroh-live: donpark/iroh-live branch audio-renditions-next, on n0-computer 60a3fcf.
+#   Publisher-ordered audio renditions, player rendition choice, live bitrate retune.
 [patch."https://github.com/moq-dev/moq"]
-hang = { path = "/Users/don/dev/worktrees/moq-next/rs/hang" }
-kio = { path = "/Users/don/dev/worktrees/moq-next/rs/kio" }
-kio-macros = { path = "/Users/don/dev/worktrees/moq-next/rs/kio/macros" }
-moq-audio = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-audio" }
-moq-congestion = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-congestion" }
-moq-crypto = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-crypto" }
-moq-json = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-json" }
-moq-loc = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-loc" }
-moq-msf = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-msf" }
-moq-mux = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-mux" }
-moq-net = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-net" }
-moq-nvenc = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-nvenc" }
-moq-pattern = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-pattern" }
-moq-quic = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-quic" }
-moq-sock = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-sock" }
-moq-tokio = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-tokio" }
-moq-v4l = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-v4l" }
-moq-vaapi = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-vaapi" }
-moq-video = { path = "/Users/don/dev/worktrees/moq-next/rs/moq-video" }
-qmux = { path = "/Users/don/dev/worktrees/moq-next/rs/qmux" }
+hang = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+kio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+kio-macros = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-audio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-congestion = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-crypto = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-json = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-loc = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-msf = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-mux = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-net = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-nvenc = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-pattern = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-quic = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-sock = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-tokio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-v4l = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-vaapi = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+moq-video = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+qmux = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
 
 [patch."https://github.com/n0-computer/iroh-live"]
-iroh-live = { path = "/Users/don/dev/worktrees/iroh-live-next/iroh-live" }
-iroh-live-node = { path = "/Users/don/dev/worktrees/iroh-live-next/iroh-live-node" }
-moq-ext-access = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-access" }
-moq-ext-adaptive = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-adaptive" }
-moq-ext-json = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-json" }
-moq-ext-player = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-player" }
-moq-ext-publisher = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-publisher" }
-moq-ext-sources = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-ext-sources" }
-moq-transport-iroh = { path = "/Users/don/dev/worktrees/iroh-live-next/moq-transport-iroh" }
+iroh-live = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+iroh-live-node = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-access = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-adaptive = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-json = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-player = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-publisher = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-ext-sources = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+moq-transport-iroh = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
