@@ -9,7 +9,7 @@
     "clean": "rm -rf .output dist"
   },
   "dependencies": {
-    "ai": "^7.0.176",
+    "ai": "^7.0.177",
     "eve": "1.0.2",
     "eve-idfon": "link:../../integrations/eve-idfon",
     "eve-idfon-voice": "link:../../integrations/eve-idfon-voice",
