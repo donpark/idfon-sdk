@@ -453,6 +453,10 @@ enum RoomCmd {
         /// Peer ref (id, name, or alias) to add as a member; repeatable
         #[arg(long = "member")]
         members: Vec<String>,
+        /// Keep a group call's session open when its last member leaves
+        /// (`call.auto_close` off; on by default)
+        #[arg(long = "keep-call-open")]
+        keep_call_open: bool,
     },
     /// List rooms
     List,
@@ -479,6 +483,38 @@ enum RoomCmd {
     },
     /// Leave a room (local only; other members are not told)
     Leave {
+        #[arg(value_name = "ROOM")]
+        room: String,
+    },
+    /// The room's group call (signaling only: media is the app's)
+    Call {
+        #[command(subcommand)]
+        command: RoomCallCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum RoomCallCmd {
+    /// Join the room's call, starting one if none runs (12 people at most)
+    Join {
+        #[arg(value_name = "ROOM")]
+        room: String,
+        /// This member's published broadcast ticket
+        #[arg(long)]
+        ticket: String,
+        /// This member's dial address JSON
+        #[arg(long)]
+        addr: Option<String>,
+        #[arg(long = "audio-codec")]
+        audio_codec: Option<String>,
+    },
+    /// Leave the room's call
+    Leave {
+        #[arg(value_name = "ROOM")]
+        room: String,
+    },
+    /// Show the room's call: session, roster, and whether this member is in it
+    Status {
         #[arg(value_name = "ROOM")]
         room: String,
     },
@@ -1022,8 +1058,11 @@ fn run() -> io::Result<()> {
             json,
         ),
         Command::Room(command) => match command {
-            RoomCmd::Create { id, name, members } => {
+            RoomCmd::Create { id, name, members, keep_call_open } => {
                 let mut params = json!({"id": id, "name": name});
+                if keep_call_open {
+                    params["call_auto_close"] = json!(false);
+                }
                 if !members.is_empty() {
                     params["members"] = json!(members);
                 }
@@ -1076,6 +1115,17 @@ fn run() -> io::Result<()> {
                 )?,
                 json,
             ),
+            RoomCmd::Call { command } => {
+                let (method, params) = match command {
+                    RoomCallCmd::Join { room, ticket, addr, audio_codec } => (
+                        "room.call.join",
+                        json!({"room": room, "ticket": ticket, "addr": addr, "audio_codec": audio_codec}),
+                    ),
+                    RoomCallCmd::Leave { room } => ("room.call.leave", json!({"room": room})),
+                    RoomCallCmd::Status { room } => ("room.call.status", json!({"room": room})),
+                };
+                finish(send_rpc(socket, method, params, identity, cli.stdin_json)?, json)
+            }
         },
         Command::Send(args) => {
             if args.stream {
