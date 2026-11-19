@@ -59,9 +59,12 @@ Reference values from the model card ("Results"):
 ## Running the shadow logger
 
 ```sh
-node src/bcd/shadow.ts [bridge-url] [decision-log.jsonl]
+IDFON_BRIDGE_SECRET=<bridge --secret> node src/bcd/shadow.ts [bridge-url] [decision-log.jsonl]
 # defaults: http://127.0.0.1:59861  ->  /tmp/bcd-shadow.jsonl
 ```
+
+`/live/stream` requires the bridge's channel secret, like every other bridge
+route.
 
 Reads the bridge's `GET /live/stream` (caller audio, 24 kHz s16, resampled to
 16 kHz) and appends one JSON line per event: `{ts, kind, frame, p,

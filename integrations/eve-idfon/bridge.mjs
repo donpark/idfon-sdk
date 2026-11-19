@@ -155,6 +155,10 @@ holder.on("close", () => process.exitCode ||= 1);
 const server = createServer(async (request, response) => {
   // Live-call caller audio: an SSE stream a standalone TS voice agent reads.
   if (request.method === "GET" && request.url === "/live/stream") {
+    // Caller audio: same secret as every POST route (loopback is not auth).
+    if (request.headers["x-idfon-channel-secret"] !== secret) {
+      response.writeHead(401); response.end("unauthorized\n"); return;
+    }
     response.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
