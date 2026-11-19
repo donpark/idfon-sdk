@@ -10,6 +10,8 @@
 #    is gone from their mix.
 # 3. One crashes (its member and its daemon killed, no leave): the other two
 #    drop it by expiry and still hear each other.
+# 4. One member's daemon restarts mid-call (the mac app runs it as its own
+#    process): the member re-joins with the same broadcast; nobody loses anyone.
 #
 #   scripts/group-call-e2e.sh
 set -eu
@@ -26,7 +28,10 @@ pids=""
 cleanup() {
   for pid in $pids; do kill "$pid" 2>/dev/null || true; done
   [ -n "$pids" ] && wait $pids 2>/dev/null || true
-  rm -rf "$work"
+  # The CLI can launch its own daemon for a socket that does not answer yet,
+  # so stop every daemon on this run's sockets, not just the ones started here.
+  pkill -f "idfond --socket $work/" 2>/dev/null || true
+  if [ -n "${KEEP:-}" ]; then echo "kept $work"; else rm -rf "$work"; fi
 }
 trap cleanup EXIT
 
@@ -38,7 +43,6 @@ for who in a b c; do
   target/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
     >"$work/$who.log" 2>&1 &
   pids="$pids $!"
-  eval "daemon_$who=$!"
 done
 
 sock() { printf '%s' "$work/$1/idfond.sock"; }
@@ -49,6 +53,9 @@ for who in a b c; do
     sleep 0.1
   done
 done
+
+# The daemon actually serving each socket (the CLI may have launched it).
+daemon_pid() { pgrep -f "idfond --socket $work/$1/idfond.sock" | head -n 1; }
 
 identity_field() {
   "$NUF" --socket "$(sock "$1")" status --json | jq -r ".result.identity.$2"
@@ -133,15 +140,46 @@ sleep 1
 member c 990 --seconds 60 --expect 440 --expect-absent 660 --expect-members 1; pc=$!
 sleep 8
 kill -9 "$pb" 2>/dev/null || true
-kill -9 "$daemon_b" 2>/dev/null || true
+pkill -9 -f "idfond --socket $work/b/idfond.sock" 2>/dev/null || true
 echo "(b crashed at ~10 s; expiry should drop it within ~35 s)"
 wait $pa $pc || true
 for f in "$work/a-440.json" "$work/c-990.json"; do
   judge "$f" "after b crashed, $(basename "$f" .json):"
 done
 
+# Bring b's daemon back for scenario 4.
+target/release/idfond --socket "$work/b/idfond.sock" --data-dir "$work/b" >>"$work/b.log" 2>&1 &
+pids="$pids $!"
+for _ in $(seq 1 150); do
+  "$NUF" --socket "$(sock b)" status --json >/dev/null 2>&1 && break
+  sleep 0.1
+done
+sleep 2
+
+# 4. a's daemon restarts at ~10 s; member a keeps running and must re-join.
+#    The run outlasts expiry (35 s), so a member that failed to re-join is dropped.
+member a 440 --seconds 62 --expect 660,990 --expect-members 2; pa=$!
+sleep 1
+member b 660 --seconds 61 --expect 440,990 --expect-members 2; pb=$!
+sleep 1
+member c 990 --seconds 60 --expect 440,660 --expect-members 2; pc=$!
+sleep 8
+pid_a=$(daemon_pid a)
+kill "$pid_a" 2>/dev/null || true
+while kill -0 "$pid_a" 2>/dev/null; do sleep 0.1; done
+target/release/idfond --socket "$work/a/idfond.sock" --data-dir "$work/a" >>"$work/a.log" 2>&1 &
+pids="$pids $!"
+echo "(a's daemon restarted at ~10 s)"
+wait $pa $pb $pc || true
+judge "$work/a-440.json" "after a's daemon restart, a:"
+judge "$work/b-660.json" "after a's daemon restart, b:"
+judge "$work/c-990.json" "after a's daemon restart, c:"
+[ "$(jq -r .rejoins "$work/a-440.json" 2>/dev/null)" -ge 1 ] 2>/dev/null \
+  && echo "ok: a re-joined after its daemon restarted" \
+  || { echo "FAIL: a never re-joined" >&2; status=1; }
+
 if [ "$status" = 0 ]; then
-  echo "PASS: three headless members heard each other through one mix; a leaver and a crashed member dropped out"
+  echo "PASS: three headless members heard each other through one mix; a leaver and a crashed member dropped out; a daemon restart healed"
 else
   exit 1
 fi

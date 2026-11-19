@@ -19,6 +19,7 @@ pids=""
 cleanup() {
   for pid in $pids; do kill "$pid" 2>/dev/null || true; done
   [ -n "$pids" ] && wait $pids 2>/dev/null || true
+  pkill -f "idfond --socket $work/" 2>/dev/null || true
   rm -rf "$work"
 }
 trap cleanup EXIT
