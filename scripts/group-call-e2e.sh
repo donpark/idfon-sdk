@@ -8,6 +8,8 @@
 # 1. All three stay: each must hear the other two tones.
 # 2. One leaves mid-call: the other two still hear each other, and its tone
 #    is gone from their mix.
+# 3. One crashes (its member and its daemon killed, no leave): the other two
+#    drop it by expiry and still hear each other.
 #
 #   scripts/group-call-e2e.sh
 set -eu
@@ -36,6 +38,7 @@ for who in a b c; do
   target/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
     >"$work/$who.log" 2>&1 &
   pids="$pids $!"
+  eval "daemon_$who=$!"
 done
 
 sock() { printf '%s' "$work/$1/idfond.sock"; }
@@ -89,7 +92,7 @@ member() { # WHO HZ ARGS...
 status=0
 judge() { # FILE LABEL
   if [ "$(jq -r .ok "$1" 2>/dev/null)" = true ]; then
-    echo "ok: $2 $(jq -c .heard "$1")"
+    echo "ok: $2 $(jq -c '{heard, members_final}' "$1")"
   else
     echo "FAIL: $2 $(cat "$1" 2>/dev/null)" >&2
     sed -n '1,40p' "${1%.json}.err" >&2
@@ -120,8 +123,25 @@ for f in "$work/a-440.json" "$work/c-990.json"; do
   judge "$f" "after b left, $(basename "$f" .json):"
 done
 
+sleep 2
+
+# 3. b crashes: member and daemon killed outright, nothing sent.
+member a 440 --seconds 62 --expect 990 --expect-absent 660 --expect-members 1; pa=$!
+sleep 1
+member b 660 --seconds 60; pb=$!
+sleep 1
+member c 990 --seconds 60 --expect 440 --expect-absent 660 --expect-members 1; pc=$!
+sleep 8
+kill -9 "$pb" 2>/dev/null || true
+kill -9 "$daemon_b" 2>/dev/null || true
+echo "(b crashed at ~10 s; expiry should drop it within ~35 s)"
+wait $pa $pc || true
+for f in "$work/a-440.json" "$work/c-990.json"; do
+  judge "$f" "after b crashed, $(basename "$f" .json):"
+done
+
 if [ "$status" = 0 ]; then
-  echo "PASS: three headless members heard each other through one mix; a leaver dropped out"
+  echo "PASS: three headless members heard each other through one mix; a leaver and a crashed member dropped out"
 else
   exit 1
 fi
