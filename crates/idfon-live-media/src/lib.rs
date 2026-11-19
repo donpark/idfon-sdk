@@ -22,15 +22,15 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ed25519_dalek::SigningKey;
 use idfon_core::transport::{IrohTransport, MessageTransport};
 use idfon_protocol::MessageContent;
+use iroh::protocol::Router;
 use iroh::EndpointAddr;
-use iroh_live::Live;
-use moq_audio::{
-    encode::{Codec as AudioCodec, Options as AudioOptions},
-    Format, Frame as AudioFrame,
-};
-use moq_media::publish::{AudioSource, LocalBroadcast};
-use n0_future::{boxed::BoxStream, stream::unfold};
-pub use iroh_live::ticket::LiveTicket;
+use iroh_live::layout::LiveLayout;
+use iroh_live::media::{AudioFormat, AudioSource, LocalBroadcast, SubscriptionExt as _};
+use iroh_live::{EndpointConfig, Node, NodeConfig};
+use moq_audio::{encode::Codec as AudioCodec, Format, Frame as AudioFrame};
+/// The broadcast ticket an `IDFON-LIVE/1` invite carries (`ilv1:...`, a peer
+/// plus its broadcast path). Kept under the old name for callers.
+pub use iroh_live::BroadcastTicket as LiveTicket;
 use tokio::sync::mpsc;
 
 /// 20 ms of 24 kHz mono PCM — the call plane's frame.
@@ -77,17 +77,11 @@ pub fn parse_audio_profile(codec: Option<&str>, sample_rate: Option<u32>) -> Res
             codec: AudioCodec::Pcm,
             sample_rate: 24_000,
         }),
-        // LiquidCodec (docs: idfon-home/docs/liquidcodec.md) needs a registered
-        // implementation; a holder without one refuses the call up front.
+        // TODO(iroh-live-next): fork. LiquidCodec (idfon-home/docs/liquidcodec.md)
+        // needs the fork's application-registered codec (`moq_audio::external`),
+        // which upstream moq-audio lacks until its codec seam lands. Refused.
         (Some("liquid"), Some(24_000)) => {
-            anyhow::ensure!(
-                moq_audio::external::liquid_available(),
-                "liquid caller audio needs a LiquidCodec implementation, and this holder has none"
-            );
-            Ok(AudioProfile {
-                codec: AudioCodec::Liquid,
-                sample_rate: 24_000,
-            })
+            anyhow::bail!("liquid caller audio needs the LiquidCodec fork, which this build lacks")
         }
         _ => {
             anyhow::bail!("unsupported caller audio profile: codec={codec:?} rate={sample_rate:?}")
@@ -276,7 +270,7 @@ pub struct CallSession {
     pub stop: Arc<AtomicBool>,
     pub audio: AudioQueue,
     pub own_ticket: String,
-    live: Live,
+    router: Router,
     publisher: tokio::task::JoinHandle<()>,
 }
 
@@ -294,13 +288,16 @@ impl CallSession {
         profile: AudioProfile,
         broadcast_name: &str,
     ) -> Result<Self> {
-        let live = Live::from_env()
+        let endpoint = EndpointConfig::from_env()
+            .context("live endpoint config")?
+            .bind()
             .await
-            .context("live endpoint")?
-            .with_router()
-            .spawn();
-        let broadcast = live
-            .publish(broadcast_name)
+            .context("live endpoint")?;
+        let layout = LiveLayout::default();
+        let node = Node::new(endpoint.clone(), layout.config());
+        let router = node.mount(Router::builder(endpoint)).spawn();
+        let broadcast: LocalBroadcast = layout
+            .publish(&node, broadcast_name)
             .context("publish call broadcast")?;
         let audio = AudioQueue::new();
         let stop = Arc::new(AtomicBool::new(false));
@@ -310,7 +307,10 @@ impl CallSession {
             Arc::clone(&stop),
             profile,
         ));
-        let own_ticket = LiveTicket::new(live.endpoint().id(), broadcast_name).serialize();
+        let own_ticket = layout
+            .ticket(node.id(), broadcast_name)
+            .context("call ticket")?
+            .to_string();
         let call_id = rand_suffix();
         let envelope = idfon_core::sign_message(
             key,
@@ -342,22 +342,24 @@ impl CallSession {
         if !sent {
             stop.store(true, Ordering::Relaxed);
             let _ = publisher.await;
+            let _ = router.shutdown().await;
             anyhow::bail!("return-leg invite never acknowledged");
         }
         Ok(Self {
             stop,
             audio,
             own_ticket,
-            live,
+            router,
             publisher,
         })
     }
 
-    /// Stop the call: signal the publisher, wait for it, then drop the endpoint.
+    /// Stop the call: signal the publisher, wait for it, then shut the node
+    /// and its endpoint down.
     pub async fn shutdown(self) {
         self.stop.store(true, Ordering::Relaxed);
         let _ = self.publisher.await;
-        drop(self.live);
+        let _ = self.router.shutdown().await;
     }
 }
 
@@ -378,56 +380,58 @@ pub async fn subscribe_caller(
         // Relay selection at bind time (docs/relay-config.md), like every
         // other endpoint — the caller may be relay-only behind enterprise NAT.
         let endpoint = idfon_core::relay::endpoint_builder()
+            .transport_config(iroh_live::Congestion::default().transport_config())
             .bind()
             .await
             .context("caller subscribe endpoint")?;
-        let live = Live::builder(endpoint).spawn();
-        match live
-            .subscribe(ticket.endpoint.clone(), &ticket.broadcast_name)
-            .await
-        {
-            Ok(subscription) => {
-                sub = Some((live, subscription));
+        // A viewer only dials: no router, no layout.
+        let node = Node::new(endpoint.clone(), NodeConfig::default());
+        match tokio::time::timeout(Duration::from_secs(8), node.subscribe_ticket(&ticket)).await {
+            Ok(Ok(subscription)) => {
+                sub = Some((node, endpoint, subscription));
                 break;
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 eprintln!("[live-media] caller subscribe retry {attempt}: {error:#}");
-                live.shutdown().await;
+            }
+            Err(_) => {
+                eprintln!("[live-media] caller subscribe retry {attempt}: timed out");
             }
         }
+        node.shutdown().await;
+        endpoint.close().await;
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    let Some((live, subscription)) = sub else {
+    let Some((node, endpoint, subscription)) = sub else {
         anyhow::bail!("caller broadcast never announced");
     };
-    let broadcast = subscription.broadcast();
-    let catalog = broadcast.catalog();
-    let name = catalog
-        .first_audio()
-        .ok_or_else(|| anyhow!("caller broadcast has no audio track"))?
-        .to_string();
-    let config = catalog
-        .audio()
-        .get(&name)
-        .ok_or_else(|| anyhow!("caller audio catalog entry disappeared"))?
-        .clone();
+    let catalog = subscription
+        .remote_broadcast()
+        .catalog_within(Duration::from_secs(10))
+        .await
+        .map_err(|error| anyhow!("caller catalog: {error}"))?;
+    let (name, config) = catalog
+        .audio
+        .ranked()
+        .next()
+        .ok_or_else(|| anyhow!("caller broadcast has no audio track"))?;
+    let (name, config) = (name.clone(), config.clone());
     let actual_profile = parse_audio_profile(Some(&config.codec.to_string()), Some(config.sample_rate))?;
     anyhow::ensure!(
         actual_profile == expected_profile,
         "caller invite requested {expected_profile:?}, but media catalog advertises {actual_profile:?}"
     );
-    let mut output = moq_audio::decode::Output::default();
-    output.format = Format::S16;
-    output.sample_rate = Some(24_000);
-    output.layout = Some(moq_audio::Layout::Mono);
     let mut decode = moq_audio::decode::Options::default();
-    decode.output = output;
-    decode.max_age = Duration::from_millis(100);
-    // Live playout fills small holes from the next packet's in-band copy
-    // (moq-audio `conceal`); recordings and downloads must show holes as-is.
-    decode.conceal = Duration::from_millis(120);
+    decode.output.format = Format::S16;
+    decode.output.sample_rate = Some(24_000);
+    decode.output.layout = Some(moq_audio::Layout::Mono);
+    // A superseded group older than 100 ms is skipped (the old `max_age`).
+    decode.delay.max = Some(Duration::from_millis(100));
+    // TODO(iroh-live-next): fork. The fork's `conceal` (fill a hole from the
+    // next packet's in-band FEC copy) is gone; upstream conceals lost Opus
+    // packets with PLC on its own.
     let mut consumer =
-        moq_audio::decode::Consumer::new(broadcast.consumer(), &config, &name, decode).await?;
+        moq_audio::decode::Consumer::new(&subscription.broadcast(), &config, &name, decode).await?;
     let (frame_tx, frame_rx) = mpsc::channel(8);
     tokio::spawn(async move {
         let mut pacer = CallerPacer::new();
@@ -437,11 +441,12 @@ pub async fn subscribe_caller(
             tokio::spawn(async move {
                 while !read_stop.load(Ordering::Relaxed) {
                     match consumer.read().await {
-                        Ok(Some(frame)) => {
+                        Ok(Some(moq_audio::decode::Read::Frame(frame))) => {
                             if raw_tx.send(Ok(frame)).await.is_err() {
                                 break;
                             }
                         }
+                        Ok(Some(_)) => {}
                         Ok(None) => {
                             let _ = raw_tx.send(Err("caller track ended".into())).await;
                             break;
@@ -475,14 +480,16 @@ pub async fn subscribe_caller(
                                 .chunks_exact(2)
                                 .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
                                 .collect();
-                            pacer.accept_frame(frame.timestamp.as_micros() as i128, &samples);
+                            pacer.accept_frame(frame.timestamp.as_micros().unwrap_or(0) as i128, &samples);
                         }
                         Some(Err(_)) | None => break,
                     }
                 }
             }
         }
-        drop(live);
+        drop(subscription);
+        node.shutdown().await;
+        endpoint.close().await;
     });
     Ok(frame_rx)
 }
@@ -552,76 +559,60 @@ pub async fn publish_audio(
     stop: Arc<AtomicBool>,
     profile: AudioProfile,
 ) {
-    let stream_stop = Arc::clone(&stop);
+    let (sender, source) = AudioSource::push(AudioFormat {
+        sample_rate: 24_000,
+        layout: moq_audio::Layout::Mono,
+    });
+    let mut config = moq_audio::encode::Config::new(profile.sample_rate, moq_audio::Layout::Mono);
+    config.codec = profile.codec;
+    // Voice: Opus as VoIP with discontinuous transmission; the producer sends
+    // nothing while the talker is silent (the old `dtx` knob).
+    if profile.codec == AudioCodec::Opus {
+        config.kind = Some(moq_audio::encode::Kind::Voice);
+    }
+    // TODO(iroh-live-next): fork. In-band FEC, DRED (`IDFON_DRED_MS`) and the
+    // shared bitrate control were fork-only encoder settings; upstream has
+    // none of them, so they are off.
+    if let Err(error) = broadcast.set_audio(source, config) {
+        eprintln!("[live-media] return-leg audio refused: {error:#}");
+        return;
+    }
     let mut tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_millis(CHUNK_MS),
         Duration::from_millis(CHUNK_MS),
     );
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    let stream: BoxStream<AudioFrame> = Box::pin(unfold(
-        (audio, 0u64, stream_stop, tick, None::<std::time::Instant>),
-        move |(audio, pts, stop, mut tick, last_tick)| async move {
-            tick.tick().await;
-            if stop.load(Ordering::Relaxed) {
-                return None;
-            }
-            let mut data = vec![0i16; CHUNK_SAMPLES];
-            let missing = audio.fill(&mut data);
-            let now = std::time::Instant::now();
-            let tick_gap_us = last_tick
-                .map(|last| now.duration_since(last).as_micros())
-                .unwrap_or(CHUNK_MS as u128 * 1_000);
-            let pts_delta = if tick_gap_us > 30_000 {
-                tick_gap_us as u64
-            } else {
-                CHUNK_MS * 1_000
-            };
-            let _ = missing;
-            let bytes: Vec<u8> = data.iter().flat_map(|sample| sample.to_le_bytes()).collect();
-            let timestamp = moq_net::Timestamp::from_micros(pts).ok()?;
-            Some((
-                AudioFrame::new(bytes::Bytes::from(bytes), timestamp),
-                (audio, pts + pts_delta, stop, tick, Some(now)),
-            ))
-        },
-    ));
-    let mut options = AudioOptions::default();
-    options.settings = moq_audio::encode::Settings::new(profile.sample_rate, moq_audio::Layout::Mono);
-    options.settings.codec = profile.codec;
-    if profile.codec == AudioCodec::Liquid {
-        options.settings.frame_duration = std::time::Duration::from_millis(80);
-    }
-    // DTX: silence costs ~nothing on the wire; the decode side honors it.
-    options.settings.dtx = profile.codec == AudioCodec::Opus;
-    // In-band FEC: the frame after a hole carries a copy of this one.
-    options.settings.fec = profile.codec == AudioCodec::Opus;
-    // Deep redundancy, off unless an operator asks for it: the DRED cover is
-    // not published in the catalog, so a subscriber cannot tell a DRED stream
-    // from a PLC-only one and must be told to widen its conceal window
-    // (IDFON_CONCEAL_MS on the listening side). Below ~48 kbps libopus drops
-    // DRED outright, so pair a long cover with a bitrate that affords it.
-    options.settings.dred = (profile.codec == AudioCodec::Opus)
-        .then(|| {
-            std::env::var("IDFON_DRED_MS")
-                .ok()
-                .and_then(|value| value.trim().parse::<u64>().ok())
-        })
-        .flatten()
-        .map(|ms| std::time::Duration::from_millis(ms.clamp(80, 1_000)));
-    broadcast.audio().set_with(
-        AudioSource::Frames {
-            input: {
-                let mut input = moq_audio::encode::Input::new(24_000, moq_audio::Layout::Mono);
-                input.format = Format::S16;
-                input
-            },
-            frames: stream,
-        },
-        options,
-    );
+    let mut pts = 0u64;
+    let mut last_tick: Option<std::time::Instant> = None;
     while !stop.load(Ordering::Relaxed) {
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tick.tick().await;
+        let mut data = vec![0i16; CHUNK_SAMPLES];
+        let _missing = audio.fill(&mut data);
+        let now = std::time::Instant::now();
+        let tick_gap_us = last_tick
+            .map(|last| now.duration_since(last).as_micros())
+            .unwrap_or(CHUNK_MS as u128 * 1_000);
+        last_tick = Some(now);
+        let mut bytes = Vec::with_capacity(CHUNK_SAMPLES * 4);
+        for sample in data {
+            bytes.extend_from_slice(&(f32::from(sample) / 32768.0).to_le_bytes());
+        }
+        let Ok(timestamp) = moq_net::Timestamp::from_micros(pts) else {
+            break;
+        };
+        if sender
+            .push(AudioFrame::new(bytes::Bytes::from(bytes), timestamp))
+            .is_err()
+        {
+            break;
+        }
+        pts += if tick_gap_us > 30_000 {
+            tick_gap_us as u64
+        } else {
+            CHUNK_MS * 1_000
+        };
     }
+    drop(broadcast);
 }
 
 /// Eight hex digits from the sub-second clock; call-id suffix, not a secret.

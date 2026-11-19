@@ -2169,6 +2169,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "extended"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
+
+[[package]]
 name = "extension-traits"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2713,27 +2719,9 @@ dependencies = [
  "bytes",
  "derive_more",
  "hex",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror 2.0.21",
- "url",
-]
-
-[[package]]
-name = "hang"
-version = "0.21.11"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "bytes",
- "derive_more",
- "hex",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "kio",
+ "moq-json",
+ "moq-net",
  "serde",
  "serde_json",
  "serde_with",
@@ -3541,12 +3529,8 @@ dependencies = [
  "idfon-protocol",
  "iroh",
  "iroh-live",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-ext-adaptive",
- "moq-ext-player",
- "moq-ext-publisher",
- "moq-ext-sources",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-audio",
+ "moq-net",
  "n0-future",
  "serde_json",
  "tokio",
@@ -3595,13 +3579,9 @@ dependencies = [
  "iroh",
  "iroh-live",
  "libc",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-ext-adaptive",
- "moq-ext-player",
- "moq-ext-publisher",
- "moq-ext-sources",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-audio",
+ "moq-mux",
+ "moq-video",
  "n0-future",
  "opusic-sys",
  "serde",
@@ -3992,14 +3972,14 @@ dependencies = [
  "iroh-mdns-address-lookup",
  "iroh-tickets",
  "jpeg-encoder",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-audio",
  "moq-ext-adaptive",
  "moq-ext-player",
  "moq-ext-publisher",
  "moq-ext-sources",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-mux",
+ "moq-net",
+ "moq-video",
  "n0-future",
  "objc2",
  "once_cell",
@@ -4141,13 +4121,13 @@ dependencies = [
  "derive_more",
  "iroh",
  "iroh-live-node",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-audio",
  "moq-ext-player",
  "moq-ext-publisher",
  "moq-ext-sources",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-json",
+ "moq-net",
+ "moq-video",
  "n0-error",
  "n0-future",
  "n0-watcher",
@@ -4165,12 +4145,12 @@ dependencies = [
  "derive_more",
  "iroh",
  "iroh-mdns-peer-lookup",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
  "moq-ext-access",
  "moq-ext-adaptive",
  "moq-ext-json",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-json",
+ "moq-net",
  "moq-tokio",
  "moq-transport-iroh",
  "n0-error",
@@ -4583,19 +4563,7 @@ version = "0.6.2"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "crossbeam-epoch",
- "kio-macros 0.1.0 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "rand 0.10.3",
- "smallvec",
- "tokio",
-]
-
-[[package]]
-name = "kio"
-version = "0.6.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "crossbeam-epoch",
- "kio-macros 0.1.0 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "kio-macros",
  "rand 0.10.3",
  "smallvec",
  "tokio",
@@ -4605,16 +4573,6 @@ dependencies = [
 name = "kio-macros"
 version = "0.1.0"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "kio-macros"
-version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5016,42 +4974,10 @@ dependencies = [
  "bytes",
  "cpal",
  "dispatch2",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "objc2",
- "objc2-av-foundation",
- "objc2-core-audio-types",
- "objc2-core-media",
- "objc2-foundation",
- "objc2-screen-capture-kit",
- "rand 0.10.3",
- "ringbuf",
- "rubato",
- "sonora",
- "symphonia-codec-aac",
- "symphonia-core",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "unsafe-libopus",
-]
-
-[[package]]
-name = "moq-audio"
-version = "0.1.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "bitstream-io",
- "block2",
- "bytes",
- "cpal",
- "dispatch2",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "hang",
+ "kio",
+ "moq-mux",
+ "moq-net",
  "objc2",
  "objc2-av-foundation",
  "objc2-core-audio-types",
@@ -5075,7 +5001,7 @@ name = "moq-congestion"
 version = "0.1.0"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
  "rand 0.10.3",
  "rand_pcg",
 ]
@@ -5097,7 +5023,7 @@ version = "0.1.0"
 source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "async-channel",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-net",
  "n0-error",
  "n0-future",
  "n0-watcher",
@@ -5117,8 +5043,8 @@ name = "moq-ext-json"
 version = "0.1.0"
 source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-json",
+ "moq-net",
  "serde",
 ]
 
@@ -5128,14 +5054,14 @@ version = "0.1.0"
 source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "derive_more",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "hang",
+ "kio",
+ "moq-audio",
  "moq-ext-adaptive",
  "moq-ext-sources",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-mux",
+ "moq-net",
+ "moq-video",
  "n0-error",
  "n0-future",
  "tokio",
@@ -5150,14 +5076,14 @@ source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f64049
 dependencies = [
  "bytes",
  "derive_more",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "hang",
+ "moq-audio",
  "moq-ext-json",
  "moq-ext-sources",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-json",
+ "moq-mux",
+ "moq-net",
+ "moq-video",
  "n0-error",
  "n0-future",
  "serde",
@@ -5173,12 +5099,13 @@ source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f64049
 dependencies = [
  "bytes",
  "derive_more",
- "moq-audio 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-video 0.1.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-audio",
+ "moq-mux",
+ "moq-net",
+ "moq-video",
  "n0-error",
  "n0-future",
+ "symphonia",
  "tokio",
  "tokio-util",
  "tracing",
@@ -5190,23 +5117,8 @@ version = "0.5.8"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "thiserror 2.0.21",
- "tracing",
-]
-
-[[package]]
-name = "moq-json"
-version = "0.5.8"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "bytes",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "kio",
+ "moq-net",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -5220,17 +5132,7 @@ version = "0.2.19"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "moq-loc"
-version = "0.2.19"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "bytes",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-net",
  "thiserror 2.0.21",
 ]
 
@@ -5238,16 +5140,6 @@ dependencies = [
 name = "moq-msf"
 version = "0.5.1"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "serde",
- "serde_json",
- "serde_with",
-]
-
-[[package]]
-name = "moq-msf"
-version = "0.5.1"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "serde",
  "serde_json",
@@ -5265,47 +5157,13 @@ dependencies = [
  "crc",
  "ebml-iterable",
  "h264-reader",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "hang",
+ "kio",
  "memchr",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-loc 0.2.19 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-msf 0.5.1 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "mp4-atom",
- "mpeg2ts",
- "num_enum",
- "roxmltree",
- "rustc-hash",
- "scuffle-av1",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "url",
- "webm-iterable",
-]
-
-[[package]]
-name = "moq-mux"
-version = "0.10.11"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "base64 0.23.1",
- "bitstream-io",
- "bytes",
- "crc",
- "ebml-iterable",
- "h264-reader",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "memchr",
- "moq-json 0.5.8 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-loc 0.2.19 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-msf 0.5.1 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "moq-json",
+ "moq-loc",
+ "moq-msf",
+ "moq-net",
  "mp4-atom",
  "mpeg2ts",
  "num_enum",
@@ -5333,32 +5191,8 @@ dependencies = [
  "futures",
  "hashbrown 0.17.1",
  "hashlink",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-pattern 0.1.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "num_enum",
- "rand 0.10.3",
- "rangemap",
- "rind",
- "serde",
- "slab",
- "thiserror 2.0.21",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "moq-net"
-version = "0.3.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "arrayvec",
- "bytes",
- "flate2",
- "futures",
- "hashbrown 0.17.1",
- "hashlink",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-pattern 0.1.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
+ "kio",
+ "moq-pattern",
  "num_enum",
  "rand 0.10.3",
  "rangemap",
@@ -5373,7 +5207,7 @@ dependencies = [
 [[package]]
 name = "moq-nvenc"
 version = "0.1.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
+source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "cudarc",
  "libloading 0.9.0",
@@ -5389,14 +5223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-pattern"
-version = "0.1.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "moq-quic"
 version = "0.1.0"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
@@ -5404,7 +5230,7 @@ dependencies = [
  "bytes",
  "fastbloom",
  "indexmap 2.14.2",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
  "lru-slab",
  "moq-congestion",
  "moq-crypto",
@@ -5448,12 +5274,12 @@ dependencies = [
  "humantime",
  "humantime-serde",
  "jni 0.22.4",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
  "libc",
  "mdns-sd",
  "moq-congestion",
  "moq-crypto",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-net",
  "moq-quic",
  "moq-sock",
  "notify",
@@ -5492,8 +5318,8 @@ source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f64049
 dependencies = [
  "bytes",
  "iroh",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
+ "moq-net",
  "n0-error",
  "tracing",
 ]
@@ -5508,30 +5334,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "moq-v4l"
-version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "bitflags 2.13.2",
- "libc",
-]
-
-[[package]]
 name = "moq-vaapi"
 version = "0.2.1"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "anyhow",
- "bitflags 2.13.2",
- "libloading 0.9.0",
- "thiserror 2.0.21",
- "tracing",
-]
-
-[[package]]
-name = "moq-vaapi"
-version = "0.2.1"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -5546,20 +5351,25 @@ version = "0.1.10"
 source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "anyhow",
+ "ash",
  "block2",
  "bytes",
  "cfg_aliases",
+ "cudarc",
  "dispatch2",
  "fast_image_resize",
  "h264-reader",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "hang",
+ "kio",
  "libc",
+ "libloading 0.9.0",
  "linux-raw-sys",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-v4l 0.1.0 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
- "moq-vaapi 0.2.1 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-mux",
+ "moq-net",
+ "moq-nvenc",
+ "moq-v4l",
+ "moq-vaapi",
+ "ndk",
  "objc2",
  "objc2-av-foundation",
  "objc2-core-foundation",
@@ -5578,47 +5388,6 @@ dependencies = [
  "x11rb",
  "yuv",
  "zune-jpeg",
-]
-
-[[package]]
-name = "moq-video"
-version = "0.1.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d#4a6f522483168ace392718d68b58a402533c897d"
-dependencies = [
- "anyhow",
- "ash",
- "block2",
- "bytes",
- "cfg_aliases",
- "cudarc",
- "dispatch2",
- "fast_image_resize",
- "h264-reader",
- "hang 0.21.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "libc",
- "libloading 0.9.0",
- "linux-raw-sys",
- "moq-mux 0.10.11 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-nvenc",
- "moq-v4l 0.1.0 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "moq-vaapi 0.2.1 (git+https://github.com/moq-dev/moq?rev=4a6f522483168ace392718d68b58a402533c897d)",
- "ndk",
- "objc2",
- "objc2-av-foundation",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-core-media",
- "objc2-core-video",
- "objc2-foundation",
- "objc2-screen-capture-kit",
- "objc2-video-toolbox",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "windows",
- "yuv",
 ]
 
 [[package]]
@@ -7267,10 +7036,10 @@ source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace39271
 dependencies = [
  "bytes",
  "futures",
- "kio 0.6.2 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "kio",
  "libc",
  "moq-crypto",
- "moq-net 0.3.10 (git+https://github.com/moq-dev/moq?rev=4a6f52248)",
+ "moq-net",
  "moq-quic",
  "rustls",
  "rustls-native-certs",
@@ -8780,6 +8549,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "symphonia"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7edef6a96b696d4e0cab5ee9ebb7ca155ed95f30a6b45bbb8b97d2727f02424"
+dependencies = [
+ "lazy_static",
+ "symphonia-bundle-mp3",
+ "symphonia-codec-pcm",
+ "symphonia-core",
+ "symphonia-format-riff",
+ "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-bundle-mp3"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98ea5ffc8716bff677dfb3b01b420c7b758de901a72b8c330bf2040ab74b4add"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-core",
+]
+
+[[package]]
 name = "symphonia-codec-aac"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8788,6 +8582,16 @@ dependencies = [
  "lazy_static",
  "log",
  "symphonia-common",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-pcm"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e04ba75686acbe43542fdd374571195f0530c0b7785ca25cc6840e9c6c4b6eea"
+dependencies = [
+ "log",
  "symphonia-core",
 ]
 
@@ -8814,6 +8618,18 @@ dependencies = [
  "log",
  "num-complex",
  "smallvec",
+]
+
+[[package]]
+name = "symphonia-format-riff"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ff70929083a8c1a5f6cd7c904b6071c7914ad04739b510c2f7239dfc9b7dabe"
+dependencies = [
+ "extended",
+ "log",
+ "symphonia-core",
+ "symphonia-metadata",
 ]
 
 [[package]]
