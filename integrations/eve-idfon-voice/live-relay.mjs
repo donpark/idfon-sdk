@@ -747,7 +747,7 @@ async function main() {
       ],
     }),
   }).catch((error) => log.warn("voice info post failed", { error: String(error) }));
-  const response = await fetch(`${bridge}/live/stream`, { headers: { accept: "text/event-stream" } });
+  const response = await fetch(`${bridge}/live/stream`, { headers: { accept: "text/event-stream", "x-idfon-channel-secret": secret } });
   if (!response.ok || !response.body) throw new Error(`stream HTTP ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

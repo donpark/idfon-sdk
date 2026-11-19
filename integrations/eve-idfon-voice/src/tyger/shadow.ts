@@ -27,6 +27,8 @@ const ort = require("onnxruntime-node");
 
 export interface ShadowOptions {
   bridge: string;
+  /** The bridge's channel secret (`x-idfon-channel-secret`); required by `/live/stream`. */
+  secret?: string;
   logPath: string;
   peerId?: string;
 }
@@ -83,7 +85,8 @@ export async function runShadow(opts: ShadowOptions): Promise<void> {
   const get = opts.bridge.startsWith("https") ? httpsGet : httpGet;
   for (;;) {
     await new Promise<void>((resolve) => {
-      const req = get(`${opts.bridge}/live/stream`, { headers: { accept: "text/event-stream" } }, (res) => {
+      const req = get(`${opts.bridge}/live/stream`, { headers: { accept: "text/event-stream", ...(opts.secret ? { "x-idfon-channel-secret": opts.secret } : {}) } }, (res) => {
+        if (res.statusCode === 401) console.error("shadow: bridge rejected /live/stream (set IDFON_BRIDGE_SECRET)");
         let buffer = "";
         res.setEncoding("utf8");
         res.on("data", (chunk: string) => {
@@ -114,5 +117,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const bridge = process.argv[2] ?? process.env.IDFON_BRIDGE_URL ?? "http://127.0.0.1:59861";
   const logPath = process.argv[3] ?? "/tmp/tyger-shadow.jsonl";
   console.log(`shadow: bridge ${bridge} -> ${logPath}`);
-  await runShadow({ bridge, logPath });
+  await runShadow({ bridge, logPath, secret: process.env.IDFON_BRIDGE_SECRET });
 }

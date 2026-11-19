@@ -514,7 +514,8 @@ agent. The holder runs `backend = "relay"` (`agents/voice/relay.json`),
 which:
 
 - forwards each caller PCM frame to the bridge as `audio.frame`;
-- the bridge fans those out over SSE at `GET /live/stream`;
+- the bridge fans those out over SSE at `GET /live/stream` (requires the
+  `x-idfon-channel-secret` header, like the POST routes);
 - plays whatever the relay posts back to `POST /live/audio` (the
   `audio.append` IPC path) on the call's return leg.
 
