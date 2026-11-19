@@ -211,12 +211,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2714,7 +2708,6 @@ dependencies = [
 [[package]]
 name = "hang"
 version = "0.21.11"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "derive_more",
@@ -4115,7 +4108,6 @@ dependencies = [
 [[package]]
 name = "iroh-live"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "data-encoding",
  "derive_more",
@@ -4139,7 +4131,6 @@ dependencies = [
 [[package]]
 name = "iroh-live-node"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "data-encoding",
  "derive_more",
@@ -4560,7 +4551,6 @@ dependencies = [
 [[package]]
 name = "kio"
 version = "0.6.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "crossbeam-epoch",
  "kio-macros",
@@ -4572,7 +4562,6 @@ dependencies = [
 [[package]]
 name = "kio-macros"
 version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4967,7 +4956,6 @@ checksum = "21909324aa58f5c284d91cac514c6d081210901dc372d7c8ea6a9d7e0406097a"
 [[package]]
 name = "moq-audio"
 version = "0.1.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bitstream-io",
  "block2",
@@ -4984,6 +4972,7 @@ dependencies = [
  "objc2-core-media",
  "objc2-foundation",
  "objc2-screen-capture-kit",
+ "opusic-sys",
  "rand 0.10.3",
  "ringbuf",
  "rubato",
@@ -4993,13 +4982,11 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
- "unsafe-libopus",
 ]
 
 [[package]]
 name = "moq-congestion"
 version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "kio",
  "rand 0.10.3",
@@ -5009,7 +4996,6 @@ dependencies = [
 [[package]]
 name = "moq-crypto"
 version = "0.0.11"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "rind",
  "rind-rustls",
@@ -5020,7 +5006,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-access"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "async-channel",
  "moq-net",
@@ -5033,7 +5018,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-adaptive"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "tracing",
 ]
@@ -5041,7 +5025,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-json"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "moq-json",
  "moq-net",
@@ -5051,7 +5034,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-player"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "derive_more",
  "hang",
@@ -5072,7 +5054,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-publisher"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "bytes",
  "derive_more",
@@ -5095,7 +5076,6 @@ dependencies = [
 [[package]]
 name = "moq-ext-sources"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "bytes",
  "derive_more",
@@ -5114,7 +5094,6 @@ dependencies = [
 [[package]]
 name = "moq-json"
 version = "0.5.8"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "kio",
@@ -5129,7 +5108,6 @@ dependencies = [
 [[package]]
 name = "moq-loc"
 version = "0.2.19"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "moq-net",
@@ -5139,7 +5117,6 @@ dependencies = [
 [[package]]
 name = "moq-msf"
 version = "0.5.1"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "serde",
  "serde_json",
@@ -5149,7 +5126,6 @@ dependencies = [
 [[package]]
 name = "moq-mux"
 version = "0.10.11"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "base64 0.23.1",
  "bitstream-io",
@@ -5183,7 +5159,6 @@ dependencies = [
 [[package]]
 name = "moq-net"
 version = "0.3.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "arrayvec",
  "bytes",
@@ -5207,7 +5182,6 @@ dependencies = [
 [[package]]
 name = "moq-nvenc"
 version = "0.1.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "cudarc",
  "libloading 0.9.0",
@@ -5217,7 +5191,6 @@ dependencies = [
 [[package]]
 name = "moq-pattern"
 version = "0.1.2"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "serde",
 ]
@@ -5225,7 +5198,6 @@ dependencies = [
 [[package]]
 name = "moq-quic"
 version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -5248,7 +5220,6 @@ dependencies = [
 [[package]]
 name = "moq-sock"
 version = "0.2.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "arc-swap",
  "cfg_aliases",
@@ -5263,7 +5234,6 @@ dependencies = [
 [[package]]
 name = "moq-tokio"
 version = "0.19.23"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "dns-lookup",
@@ -5314,7 +5284,6 @@ dependencies = [
 [[package]]
 name = "moq-transport-iroh"
 version = "0.1.0"
-source = "git+https://github.com/n0-computer/iroh-live?rev=60a3fcfc0dd2416f640496a2787404552b45cdb3#60a3fcfc0dd2416f640496a2787404552b45cdb3"
 dependencies = [
  "bytes",
  "iroh",
@@ -5327,7 +5296,6 @@ dependencies = [
 [[package]]
 name = "moq-v4l"
 version = "0.1.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
@@ -5336,7 +5304,6 @@ dependencies = [
 [[package]]
 name = "moq-vaapi"
 version = "0.2.1"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -5348,7 +5315,6 @@ dependencies = [
 [[package]]
 name = "moq-video"
 version = "0.1.10"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "anyhow",
  "ash",
@@ -7032,7 +6998,6 @@ dependencies = [
 [[package]]
 name = "qmux"
 version = "0.7.0"
-source = "git+https://github.com/moq-dev/moq?rev=4a6f52248#4a6f522483168ace392718d68b58a402533c897d"
 dependencies = [
  "bytes",
  "futures",
@@ -9277,17 +9242,6 @@ checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
 dependencies = [
  "crypto-common 0.1.7",
  "subtle",
-]
-
-[[package]]
-name = "unsafe-libopus"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c757408e7256c910343c7b215c8c8b878948630eecc774baabcca0972376eb73"
-dependencies = [
- "arrayref",
- "num-complex",
- "num-traits",
 ]
 
 [[package]]

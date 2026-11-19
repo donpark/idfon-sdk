@@ -77,11 +77,17 @@ pub fn parse_audio_profile(codec: Option<&str>, sample_rate: Option<u32>) -> Res
             codec: AudioCodec::Pcm,
             sample_rate: 24_000,
         }),
-        // TODO(iroh-live-next): fork. LiquidCodec (idfon-home/docs/liquidcodec.md)
-        // needs the fork's application-registered codec (`moq_audio::external`),
-        // which upstream moq-audio lacks until its codec seam lands. Refused.
+        // LiquidCodec (docs: idfon-home/docs/liquidcodec.md) needs a registered
+        // implementation; a holder without one refuses the call up front.
         (Some("liquid"), Some(24_000)) => {
-            anyhow::bail!("liquid caller audio needs the LiquidCodec fork, which this build lacks")
+            anyhow::ensure!(
+                moq_audio::external::liquid_available(),
+                "liquid caller audio needs a LiquidCodec implementation, and this holder has none"
+            );
+            Ok(AudioProfile {
+                codec: AudioCodec::Liquid,
+                sample_rate: 24_000,
+            })
         }
         _ => {
             anyhow::bail!("unsupported caller audio profile: codec={codec:?} rate={sample_rate:?}")
@@ -410,10 +416,16 @@ pub async fn subscribe_caller(
         .catalog_within(Duration::from_secs(10))
         .await
         .map_err(|error| anyhow!("caller catalog: {error}"))?;
+    // A caller may publish its codec plus an alternate (audio renditions):
+    // take the one the invite names, else the best ranked.
     let (name, config) = catalog
         .audio
         .ranked()
-        .next()
+        .find(|(_, config)| {
+            parse_audio_profile(Some(&config.codec.to_string()), Some(config.sample_rate))
+                .is_ok_and(|profile| profile == expected_profile)
+        })
+        .or_else(|| catalog.audio.ranked().next())
         .ok_or_else(|| anyhow!("caller broadcast has no audio track"))?;
     let (name, config) = (name.clone(), config.clone());
     let actual_profile = parse_audio_profile(Some(&config.codec.to_string()), Some(config.sample_rate))?;
@@ -569,6 +581,9 @@ pub async fn publish_audio(
     // nothing while the talker is silent (the old `dtx` knob).
     if profile.codec == AudioCodec::Opus {
         config.kind = Some(moq_audio::encode::Kind::Voice);
+    }
+    if profile.codec == AudioCodec::Liquid {
+        config.frame_duration = std::time::Duration::from_millis(80);
     }
     // TODO(iroh-live-next): fork. In-band FEC, DRED (`IDFON_DRED_MS`) and the
     // shared bitrate control were fork-only encoder settings; upstream has
