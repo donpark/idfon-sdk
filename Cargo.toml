@@ -34,26 +34,26 @@ strip = "symbols"
 # - iroh-live: donpark/iroh-live branch audio-renditions-next, on n0-computer 60a3fcf.
 #   Publisher-ordered audio renditions, player rendition choice, live bitrate retune.
 [patch."https://github.com/moq-dev/moq"]
-hang = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-kio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-kio-macros = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-audio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-congestion = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-crypto = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-json = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-loc = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-msf = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-mux = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-net = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-nvenc = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-pattern = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-quic = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-sock = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-tokio = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-v4l = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-vaapi = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-moq-video = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
-qmux = { git = "https://github.com/donpark/moq", rev = "533d9f349" }
+hang = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+kio = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+kio-macros = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-audio = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-congestion = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-crypto = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-json = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-loc = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-msf = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-mux = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-net = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-nvenc = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-pattern = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-quic = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-sock = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-tokio = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-v4l = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-vaapi = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+moq-video = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
+qmux = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
 
 [patch."https://github.com/n0-computer/iroh-live"]
 iroh-live = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }

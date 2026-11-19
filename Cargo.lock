@@ -2708,7 +2708,7 @@ dependencies = [
 [[package]]
 name = "hang"
 version = "0.21.11"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "derive_more",
@@ -4555,7 +4555,7 @@ dependencies = [
 [[package]]
 name = "kio"
 version = "0.6.2"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "crossbeam-epoch",
  "kio-macros",
@@ -4567,7 +4567,7 @@ dependencies = [
 [[package]]
 name = "kio-macros"
 version = "0.1.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4962,7 +4962,7 @@ checksum = "21909324aa58f5c284d91cac514c6d081210901dc372d7c8ea6a9d7e0406097a"
 [[package]]
 name = "moq-audio"
 version = "0.1.10"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bitstream-io",
  "block2",
@@ -4994,7 +4994,7 @@ dependencies = [
 [[package]]
 name = "moq-congestion"
 version = "0.1.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "kio",
  "rand 0.10.3",
@@ -5004,7 +5004,7 @@ dependencies = [
 [[package]]
 name = "moq-crypto"
 version = "0.0.11"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "rind",
  "rind-rustls",
@@ -5109,7 +5109,7 @@ dependencies = [
 [[package]]
 name = "moq-json"
 version = "0.5.8"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "kio",
@@ -5124,7 +5124,7 @@ dependencies = [
 [[package]]
 name = "moq-loc"
 version = "0.2.19"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "moq-net",
@@ -5134,7 +5134,7 @@ dependencies = [
 [[package]]
 name = "moq-msf"
 version = "0.5.1"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "serde",
  "serde_json",
@@ -5144,7 +5144,7 @@ dependencies = [
 [[package]]
 name = "moq-mux"
 version = "0.10.11"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "base64 0.23.1",
  "bitstream-io",
@@ -5178,7 +5178,7 @@ dependencies = [
 [[package]]
 name = "moq-net"
 version = "0.3.10"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "arrayvec",
  "bytes",
@@ -5202,7 +5202,7 @@ dependencies = [
 [[package]]
 name = "moq-nvenc"
 version = "0.1.2"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "cudarc",
  "libloading 0.9.0",
@@ -5212,7 +5212,7 @@ dependencies = [
 [[package]]
 name = "moq-pattern"
 version = "0.1.2"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "serde",
 ]
@@ -5220,7 +5220,7 @@ dependencies = [
 [[package]]
 name = "moq-quic"
 version = "0.1.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -5243,7 +5243,7 @@ dependencies = [
 [[package]]
 name = "moq-sock"
 version = "0.2.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "arc-swap",
  "cfg_aliases",
@@ -5258,7 +5258,7 @@ dependencies = [
 [[package]]
 name = "moq-tokio"
 version = "0.19.23"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "dns-lookup",
@@ -5322,7 +5322,7 @@ dependencies = [
 [[package]]
 name = "moq-v4l"
 version = "0.1.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bitflags 2.13.2",
  "libc",
@@ -5331,7 +5331,7 @@ dependencies = [
 [[package]]
 name = "moq-vaapi"
 version = "0.2.1"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "anyhow",
  "bitflags 2.13.2",
@@ -5343,7 +5343,7 @@ dependencies = [
 [[package]]
 name = "moq-video"
 version = "0.1.10"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "anyhow",
  "ash",
@@ -7027,7 +7027,7 @@ dependencies = [
 [[package]]
 name = "qmux"
 version = "0.7.0"
-source = "git+https://github.com/donpark/moq?rev=533d9f349#533d9f3497ada2adcd70359bf6b71ff5dd5e8a5b"
+source = "git+https://github.com/donpark/moq?rev=14598b93c#14598b93c7712628f113b12761960ae54bfcd732"
 dependencies = [
  "bytes",
  "futures",
