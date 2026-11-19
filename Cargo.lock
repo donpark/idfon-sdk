@@ -3965,6 +3965,7 @@ dependencies = [
  "iroh-mdns-address-lookup",
  "iroh-tickets",
  "jpeg-encoder",
+ "kio",
  "moq-audio",
  "moq-ext-adaptive",
  "moq-ext-player",

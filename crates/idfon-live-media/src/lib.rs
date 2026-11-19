@@ -439,9 +439,10 @@ pub async fn subscribe_caller(
     decode.output.layout = Some(moq_audio::Layout::Mono);
     // A superseded group older than 100 ms is skipped (the old `max_age`).
     decode.delay.max = Some(Duration::from_millis(100));
-    // TODO(iroh-live-next): fork. The fork's `conceal` (fill a hole from the
-    // next packet's in-band FEC copy) is gone; upstream conceals lost Opus
-    // packets with PLC on its own.
+    // Live playout rebuilds a lost packet from the next one's in-band FEC copy
+    // (or DRED), concealing what neither covers; recordings and downloads must
+    // show holes as-is.
+    decode.recover = Some(true);
     let mut consumer =
         moq_audio::decode::Consumer::new(&subscription.broadcast(), &config, &name, decode).await?;
     let (frame_tx, frame_rx) = mpsc::channel(8);
@@ -585,9 +586,21 @@ pub async fn publish_audio(
     if profile.codec == AudioCodec::Liquid {
         config.frame_duration = std::time::Duration::from_millis(80);
     }
-    // TODO(iroh-live-next): fork. In-band FEC, DRED (`IDFON_DRED_MS`) and the
-    // shared bitrate control were fork-only encoder settings; upstream has
-    // none of them, so they are off.
+    // In-band FEC: the frame after a hole carries a copy of this one.
+    config.fec = profile.codec == AudioCodec::Opus;
+    // Deep redundancy, off unless an operator asks for it (`IDFON_DRED_MS`).
+    // The DRED cover is not published in the catalog; the subscriber's
+    // recovering decode uses whatever the next packet carries. Below ~48 kbps
+    // libopus drops DRED outright, so pair a long cover with a bitrate that
+    // affords it.
+    config.dred = (profile.codec == AudioCodec::Opus)
+        .then(|| {
+            std::env::var("IDFON_DRED_MS")
+                .ok()
+                .and_then(|value| value.trim().parse::<u64>().ok())
+        })
+        .flatten()
+        .map(|ms| std::time::Duration::from_millis(ms.clamp(80, 1_000)));
     if let Err(error) = broadcast.set_audio(source, config) {
         eprintln!("[live-media] return-leg audio refused: {error:#}");
         return;
