@@ -21,6 +21,6 @@ contact who can message you and auto-replies `pong: <text>`. Files are in
 - **t10** Broadcast `song.wav` as live audio on a loop. Report its ticket, then list running broadcasts, then stop it.
 
 ## Group 4
-- **t7** Create a second identity named `work`, switch to it, then switch back to your original identity.
+- **t7** Create a second identity named `travel`, switch to it, then switch back to your original identity.
 - **t8** Make a ticket that lets bob message you, valid until 2026-12-31. Save it to `ticket-for-bob.txt`.
 - **t12** Create a room named `team` with bob in it, and send `standup` to the room.

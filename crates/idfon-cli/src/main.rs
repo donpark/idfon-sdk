@@ -486,6 +486,17 @@ enum ConfigCmd {
     Path,
     /// Print every setting: its value, where it came from, its env var
     Show,
+    /// Save a setting to the config file: `config set edge.url https://…`
+    Set {
+        /// Key (`edge.url`) or env var name (`IDFON_EDGE_URL`)
+        key: String,
+        value: String,
+    },
+    /// Remove a setting from the config file
+    Unset {
+        /// Key (`edge.url`) or env var name (`IDFON_EDGE_URL`)
+        key: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1600,6 +1611,20 @@ fn run() -> io::Result<()> {
             }
             Ok(())
         }
+        Command::Config(ConfigCmd::Set { key, value }) => {
+            let path = idfon_config::set(&key, &value).map_err(io::Error::other)?;
+            let setting = idfon_config::find(&key).expect("set validated the key");
+            println!("set {} in {}", setting.key, path.display());
+            note_config_overrides(setting);
+            Ok(())
+        }
+        Command::Config(ConfigCmd::Unset { key }) => {
+            let path = idfon_config::unset(&key).map_err(io::Error::other)?;
+            let setting = idfon_config::find(&key).expect("unset validated the key");
+            println!("removed {} from {}", setting.key, path.display());
+            note_config_overrides(setting);
+            Ok(())
+        }
         Command::Config(ConfigCmd::Show) => {
             let mut rows = Vec::new();
             for setting in idfon_config::SETTINGS {
@@ -1669,12 +1694,17 @@ fn run() -> io::Result<()> {
                     return finish(response, json);
                 }
                 let result = ux::ok_result(response)?;
-                let ids = result["ids"].as_array().cloned().unwrap_or_default();
-                if ids.is_empty() {
+                let publishers = result["publishers"].as_array().cloned().unwrap_or_default();
+                if publishers.is_empty() {
                     eprintln!("no broadcasts running");
                 }
-                for id in ids {
-                    println!("{}", id.as_str().unwrap_or("?"));
+                for publisher in publishers {
+                    println!(
+                        "{}  {}  {}",
+                        publisher["id"].as_str().unwrap_or("?"),
+                        publisher["kind"].as_str().unwrap_or("?"),
+                        publisher["ticket"].as_str().unwrap_or("")
+                    );
                 }
                 Ok(())
             }
@@ -1857,6 +1887,14 @@ fn cmd_contact_import(
         print_added(response, json)?;
     }
     Ok(())
+}
+
+/// After a config change: who still wins over the file, and when it applies.
+fn note_config_overrides(setting: &idfon_config::Setting) {
+    if std::env::var(setting.env).is_ok_and(|value| !value.trim().is_empty()) {
+        eprintln!("note: {} is set in your environment and overrides the file", setting.env);
+    }
+    eprintln!("a running daemon reads the file at start: `idfon shutdown` to apply");
 }
 
 /// `added NAME`, or the envelope with `--json`, or the error.

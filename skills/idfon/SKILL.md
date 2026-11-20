@@ -28,7 +28,7 @@ idfon get TICKET -o copy.txt        # download a ticket
 
 idfon live publish song.wav --loop  # broadcast audio; prints its ticket and returns
                                     #   (the daemon keeps broadcasting)
-idfon live list | stop ID           # running broadcasts
+idfon live list | stop ID           # running broadcasts: id, kind, ticket
 idfon live watch TICKET -o rec.wav  # record someone's broadcast
 idfon call bob --file song.wav      # 1:1 call; blocks until hangup
 idfon answer -o call.wav            # take the next incoming call
@@ -46,5 +46,5 @@ idfon identity list | create NAME | use NAME   # your identities
 - Durations: `30s`, `5m`, `2h`, `30d`. Dates: `2026-12-31`.
 - Files you sent show in a peer's `inbox` as `[file, N bytes]`; they save it with `idfon recv`.
 - `idfon rpc METHOD '{json}'` calls any daemon method directly.
-- `idfon config show` lists settings (env var or `~/.idfon/config.toml`); `--profile NAME` runs a separate daemon.
+- `idfon config show | set KEY VALUE | unset KEY` manage settings (env var wins over `~/.idfon/config.toml`); `--profile NAME` runs a separate daemon.
 - `idfon <command> --help` lists every flag.

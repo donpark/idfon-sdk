@@ -22,7 +22,7 @@ for t in "$@"; do
     t4) result t4 "cmp -s '$w/received.txt' '$dir/b/bobfile.txt'" ;;
     t5) echo "ANSWER t5: verify with: Q get <ticket>" ;;
     t6) result t6 "cmp -s '$w/out.bin' '$dir/b/shared.txt'" ;;
-    t7) result t7 "Q identity list --json | jq -e '(.result.identities | map(.name) | index(\"work\")) and (.result.identities[] | select(.active) | .name != \"work\")'" ;;
+    t7) result t7 "Q identity list --json | jq -e '(.result.identities | map(.name) | index(\"travel\")) and (.result.identities[] | select(.active) | .name != \"travel\")'" ;;
     t8) result t8 "test -s '$w/ticket-for-bob.txt'" ;;
     t9) echo "ANSWER t9: expect yes" ;;
     t10) result t10 "grep -q 'stream\\|live' '$dir/calls.log' && Q send --stream --list --json | jq -e '(.result.ids // []) | length == 0'" ;;

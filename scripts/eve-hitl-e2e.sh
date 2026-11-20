@@ -155,26 +155,32 @@ done
 "$NUF" --socket "$A" events --follow --type message.received >"$work/events.log" 2>&1 &
 pids="$pids $!"
 
-request_id_at() {
+# Eve 1.0: an approval arrives as IDFON-STATUS/1 with
+# event=authorization.required; answers are {interactionId, optionId}.
+interaction_id_at() {
   python3 - "$work/events.log" "$1" <<'PY'
 import base64
 import json
 import sys
 
 want = int(sys.argv[2])
-requests = []
+found = []
 for line in open(sys.argv[1]):
     try:
         text = json.loads(line)["data"]["text"]
     except (ValueError, KeyError, TypeError):
         continue
-    if not text.startswith("IDFON-HITL/1\n"): 
+    if not text.startswith("IDFON-STATUS/1\n"):
         continue
-    encoded = next(line[8:] for line in text.splitlines() if line.startswith("payload="))
-    requests.append(json.loads(base64.b64decode(encoded)))
-if len(requests) < want:
+    encoded = next((l[8:] for l in text.splitlines() if l.startswith("payload=")), None)
+    if not encoded:
+        continue
+    status = json.loads(base64.b64decode(encoded))
+    if status.get("event") == "authorization.required":
+        found.append(status["data"]["interactionId"])
+if len(found) < want:
     raise SystemExit(1)
-print(requests[want - 1][0]["requestId"])
+print(found[want - 1])
 PY
 }
 
@@ -191,7 +197,7 @@ import base64
 import json
 import sys
 
-payload = json.dumps([{"requestId": sys.argv[1], "optionId": sys.argv[2]}], separators=(",", ":"))
+payload = json.dumps([{"interactionId": sys.argv[1], "optionId": sys.argv[2]}], separators=(",", ":"))
 print("IDFON-HITL-RESPONSE/1\npayload=" + base64.b64encode(payload.encode()).decode())
 PY
 }
@@ -200,12 +206,12 @@ PY
   --idempotency-key eve-m4-deny \
   --capability-ticket "$HOLDER_TICKET" --retries 2 >"$work/send-deny.out"
 for _ in $(seq 1 200); do
-  if [ "$(grep -c 'IDFON-HITL/1' "$work/events.log" || true)" -ge 1 ]; then break; fi
+  if interaction_id_at 1 >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
-request_id=$(request_id_at 1)
+request_id=$(interaction_id_at 1)
 sleep 3
-hitl_response "$request_id" cancel >"$work/deny-response.txt"
+hitl_response "$request_id" deny >"$work/deny-response.txt"
 send_response "$(cat "$work/deny-response.txt")" \
   eve-m4-deny-response "$work/respond-deny.out"
 for _ in $(seq 1 200); do
@@ -223,10 +229,10 @@ fi
   --idempotency-key eve-m4-approve \
   --capability-ticket "$HOLDER_TICKET" --retries 2 >"$work/send-approve.out"
 for _ in $(seq 1 200); do
-  if [ "$(grep -c 'IDFON-HITL/1' "$work/events.log" || true)" -ge 2 ]; then break; fi
+  if interaction_id_at 2 >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
-request_id=$(request_id_at 2)
+request_id=$(interaction_id_at 2)
 sleep 3
 hitl_response "$request_id" approve >"$work/approve-response.txt"
 send_response "$(cat "$work/approve-response.txt")" \
@@ -243,4 +249,4 @@ for _ in $(seq 1 100); do
 done
 "$NUF" --socket "$A" events --type message.received --json 2>/dev/null |
   grep -q 'reply from eve: approve'
-echo "PASS: idfon HITL request, deny, approve, and durable resume"
+echo "PASS: idfon approval (authorization.required), deny, approve, and durable resume"
