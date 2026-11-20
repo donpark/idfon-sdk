@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { emitEnvelope } from "../outbox";
+import { envelopes } from "../envelopes";
 
 // Render a declarative view for the caller. The app draws it from its own
 // component catalog and resolves any action against its own tool registry, so
@@ -45,7 +46,7 @@ export default defineTool({
     // Rust and the apps parse: nesting matters, the elements are not top-level.
     const spec = { id: input.id, root: input.root, elements: input.elements };
     const body = { title: input.title ?? null, spec };
-    emitEnvelope(ctx.session.id, `IDFON-RENDER/1\n${JSON.stringify(body)}`);
+    emitEnvelope(ctx.session.id, envelopes.render(body));
     return { rendered: true };
   },
 });

@@ -1,7 +1,7 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 
-import extension from "../extension";
 import { logger } from "../log";
+import { bridge } from "../bridge";
 
 const log = logger("idfon.agent");
 
@@ -35,15 +35,7 @@ export default defineDynamic(async (ctx) => {
   const started = Date.now();
   let records: VoiceRecord[];
   try {
-    const response = await fetch(`${extension.config.bridgeUrl}/records/drain`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": extension.config.secret,
-      },
-      body: JSON.stringify({ peer_id: peerId, turn_id: turnId }),
-    });
-    if (!response.ok) return null;
+    const response = await bridge.post("/records/drain", { peer_id: peerId, turn_id: turnId });
     records = ((await response.json()) as { records?: VoiceRecord[] }).records ?? [];
   } catch (error) {
     // A down bridge must not fail the turn; the records stay buffered.

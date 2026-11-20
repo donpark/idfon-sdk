@@ -1,7 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-import extension from "../extension";
+import { bridge } from "../bridge";
+import { envelopes } from "../envelopes";
 
 export default defineTool({
   description: "Publish a local audio file as an idfon live stream ticket.",
@@ -19,28 +20,14 @@ export default defineTool({
     if (!capabilities?.includes(grant)) {
       throw new Error(`idfon grant ${grant} is required`);
     }
-    const response = await fetch(`${extension.config.bridgeUrl}/live/publish`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": extension.config.secret,
-      },
-      body: JSON.stringify({
-        path: input.filePath,
-        name: input.name,
-        loop_playback: input.loop,
-        relay: input.relay,
-        video: input.video,
-        quality: input.quality,
-      }),
+    const result = await bridge.publishLive({
+      path: input.filePath,
+      name: input.name,
+      loop_playback: input.loop,
+      relay: input.relay,
+      video: input.video,
+      quality: input.quality,
     });
-    if (!response.ok) {
-      throw new Error(`idfon live publish returned HTTP ${response.status}`);
-    }
-    const result = (await response.json()) as { id: string; ticket: string };
-    return {
-      ...result,
-      envelope: `IDFON-LIVE/1\naction=start\nkind=${input.video ? "video" : "audio"}\nticket=${result.ticket}`,
-    };
+    return { ...result, envelope: envelopes.live(input.video ? "video" : "audio", result.ticket) };
   },
 });

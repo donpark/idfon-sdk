@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { emitEnvelope } from "../outbox";
+import { envelopes } from "../envelopes";
 
 // Point at part of an artifact on the user's screen: open it and highlight the
 // selection (image region, text range, element, or media time). The envelope
@@ -26,7 +27,7 @@ export default defineTool({
       blob_ticket: input.blob_ticket ?? null,
       note: input.note ?? null,
     };
-    emitEnvelope(ctx.session.id, `IDFON-POINT/1\n${JSON.stringify(body)}`);
+    emitEnvelope(ctx.session.id, envelopes.point(body));
     return { pointed: true };
   },
 });

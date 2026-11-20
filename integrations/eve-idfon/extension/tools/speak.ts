@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { emitEnvelope } from "../outbox";
+import { envelopes } from "../envelopes";
 
 // Speak text aloud (docs/session-context.md, docs/voice-multimodal.md).
 //
@@ -31,7 +32,7 @@ export default defineTool({
       priority: input.priority ?? "normal",
       correlation_id: input.correlation_id ?? null,
     };
-    emitEnvelope(ctx.session.id, `IDFON-SPEAK/1\n${JSON.stringify(body)}`);
+    emitEnvelope(ctx.session.id, envelopes.speak(body));
     return { spoken: true };
   },
 });

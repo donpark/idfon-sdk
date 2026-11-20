@@ -39,7 +39,7 @@ import idfon from "eve-idfon";
 
 export default idfon({
   bridgeUrl: "http://127.0.0.1:18766",
-  secret: process.env.IDFON_CHANNEL_SECRET!,
+  secret: process.env.IDFON_BRIDGE_SECRET!,
 });
 ```
 
@@ -48,6 +48,24 @@ handler requires the same `secret` on every request.
 
 The `idfon__send`, `idfon__put`, `idfon__publish-live`, and
 `idfon__stop-live` tools are available at `eve-idfon/tools`.
+
+### Calling the bridge from your own tools
+
+Use the shared client instead of hand-writing `fetch` + the secret header:
+
+```ts
+import { bridge, createBridge } from "eve-idfon/bridge";   // typed bridge client
+import { envelopes } from "eve-idfon/envelopes";          // every IDFON-*/1 string
+import { emitEnvelope } from "eve-idfon/outbox";          // deliver with the reply
+
+const { ticket, size_bytes } = await bridge.putBlob(bytes.toString("base64"));
+emitEnvelope(ctx.session.id, envelopes.data(ticket, size_bytes));
+```
+
+`bridge` reads the extension config, else `IDFON_BRIDGE_URL` /
+`IDFON_BRIDGE_SECRET` (the older `EVE_IDFON_BRIDGE_URL`, `EVE_IDFON_SECRET`
+and `IDFON_CHANNEL_SECRET` still work). A non-2xx response throws
+`BridgeError` with the path, status and the bridge's message.
 
 ## Run the managed sidecar
 
@@ -61,7 +79,7 @@ npx eve-idfon \
   --socket    /run/user/$UID/idfon-eve.sock \
   --blob-dir  ~/.local/share/idfon/eve-blobs \
   --target    http://127.0.0.1:52776 \
-  --secret    "$IDFON_CHANNEL_SECRET" \
+  --secret    "$IDFON_BRIDGE_SECRET" \
   --port      18766
 ```
 

@@ -1,7 +1,7 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 
-import extension from "../extension";
 import { logger } from "../log";
+import { bridge } from "../bridge";
 
 const log = logger("idfon.agent");
 
@@ -18,15 +18,7 @@ let cached: VoiceInfo | undefined;
 async function voiceInfo(): Promise<VoiceInfo | null> {
   if (cached) return cached;
   try {
-    const response = await fetch(`${extension.config.bridgeUrl}/voice/info`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": extension.config.secret,
-      },
-      body: "{}",
-    });
-    const info = response.ok ? ((await response.json()) as VoiceInfo) : null;
+    const info = await bridge.json<VoiceInfo>("/voice/info");
     // Don't cache the empty `{}` the bridge serves before the holder pushes.
     if (info && Object.keys(info).length > 0) cached = info;
   } catch (error) {

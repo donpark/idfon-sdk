@@ -2,7 +2,8 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
-import extension from "../extension";
+import { bridge } from "../bridge";
+import { envelopes } from "../envelopes";
 import { emitEnvelope } from "../outbox";
 
 // Publish a durable artifact for the user (docs/idfon-artifacts.md). Bytes go
@@ -62,16 +63,7 @@ export default defineTool({
     }
 
     const resolvedMime = mime ?? inferMime(title);
-    const response = await fetch(`${extension.config.bridgeUrl}/blob/put`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": extension.config.secret,
-      },
-      body: JSON.stringify({ bytes_base64: bytes.toString("base64") }),
-    });
-    if (!response.ok) throw new Error(`idfon blob put returned HTTP ${response.status}`);
-    const blob = (await response.json()) as { ticket: string; size_bytes: number };
+    const blob = await bridge.putBlob(bytes.toString("base64"));
 
     const artifactId = randomUUID();
     const artifact = {
@@ -84,7 +76,7 @@ export default defineTool({
       created_at: new Date().toISOString(),
       ...(metadata ? { metadata } : {}),
     };
-    emitEnvelope(ctx.session.id, `IDFON-ARTIFACT/1\n${JSON.stringify(artifact)}`);
+    emitEnvelope(ctx.session.id, envelopes.artifact(artifact));
     return { artifact_id: artifactId, ticket: blob.ticket, size_bytes: blob.size_bytes };
   },
 });

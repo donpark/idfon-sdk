@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-import extension from "../extension";
+import { bridge } from "../bridge";
 
 // Durable publication (docs/durable-files.md). The bridge forwards the bytes to
 // the edge (or the blob store for `durable: false`), so this works from an
@@ -56,45 +56,15 @@ export default defineTool({
       throw new Error("permanent and expires_in are exclusive");
     }
 
-    const headers = {
-      "content-type": "application/json",
-      "x-idfon-channel-secret": extension.config.secret,
-    };
     if (durable === false) {
-      const response = await fetch(`${extension.config.bridgeUrl}/blob/put`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ bytes_base64: bytes.toString("base64") }),
-      });
-      if (!response.ok) {
-        throw new Error(`blob put returned HTTP ${response.status}: ${(await response.text()).trim()}`);
-      }
-      const blob = (await response.json()) as { ticket: string; size_bytes: number };
+      const blob = await bridge.putBlob(bytes.toString("base64"));
       return { ticket: blob.ticket, size_bytes: blob.size_bytes, durable: false };
     }
-
-    const response = await fetch(`${extension.config.bridgeUrl}/files/publish`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        bytes_base64: bytes.toString("base64"),
-        name,
-        expires_in,
-        permanent: permanent ?? false,
-      }),
+    return bridge.publishFile({
+      bytes_base64: bytes.toString("base64"),
+      name,
+      expires_in,
+      permanent: permanent ?? false,
     });
-    const text = await response.text();
-    if (!response.ok) {
-      throw new Error(`publish returned HTTP ${response.status}: ${text.trim()}`);
-    }
-    return JSON.parse(text) as {
-      url: string;
-      cdn_url?: string;
-      name_url?: string;
-      sha256: string;
-      size: number;
-      existed: boolean;
-      expires_at?: number;
-    };
   },
 });

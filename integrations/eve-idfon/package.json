@@ -44,7 +44,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "eve extension build",
-    "prepare": "eve extension build"
+    "prepare": "eve extension build",
+    "test": "eve extension build && node --test test/"
   },
   "dependencies": {
     "zod": "^4.6.7"
@@ -75,6 +76,14 @@
     "./outbox": {
       "types": "./dist/extension/outbox.d.ts",
       "default": "./dist/extension/outbox.mjs"
+    },
+    "./bridge": {
+      "types": "./dist/extension/bridge.d.ts",
+      "default": "./dist/extension/bridge.mjs"
+    },
+    "./envelopes": {
+      "types": "./dist/extension/envelopes.d.ts",
+      "default": "./dist/extension/envelopes.mjs"
     }
   }
 }
