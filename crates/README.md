@@ -13,6 +13,7 @@ of it through `iroh-c-ffi`.
 | --- | --- |
 | `idfon-protocol` | Versioned wire types shared by the daemon and clients (messages, peers, capabilities, calls, blocks, vCards). No transport, no policy. |
 | `idfon-core` | Identity, signing, capability tickets, signed paths, relay selection, transport seams. Native + wasm (the Worker uses the gated subset). |
+| `idfon-config` | Where idfon keeps things (home, daemon data, socket, `config.toml`, profiles) and its settings: env var over `~/.idfon/config.toml`. No networking deps. |
 | `idfon-telemetry` | One process-wide tracing subscriber, installed once; `IDFON_LOG` > `RUST_LOG` > `IROH_C_LOG`. |
 
 ## Daemon and its clients

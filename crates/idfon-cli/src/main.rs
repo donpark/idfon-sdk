@@ -33,7 +33,8 @@ use idfon_protocol::{
 };
 use serde_json::{json, Value};
 
-const DEFAULT_SOCKET: &str = "/tmp/idfon/idfond.sock";
+/// The active profile (`--profile` / `IDFON_PROFILE`), set once in `run`.
+static PROFILE: OnceLock<Option<String>> = OnceLock::new();
 const DAEMON_START_TIMEOUT: Duration = Duration::from_secs(5);
 /// Auto-started daemons exit after this long with no connected clients.
 const DAEMON_IDLE_EXIT_SECS: &str = "600";
@@ -79,7 +80,10 @@ fn find_daemon_binary() -> Option<PathBuf> {
 Peers are named by name, alias or id everywhere. Add --json for machine output."
 )]
 struct Cli {
-    /// Daemon socket path
+    /// Profile: a separate daemon, socket and data dir (default: IDFON_PROFILE)
+    #[arg(long, global = true, value_name = "NAME")]
+    profile: Option<String>,
+    /// Daemon socket path (overrides the profile's)
     #[arg(long, global = true, value_name = "PATH")]
     socket: Option<String>,
     /// Daemon identity to act as
@@ -172,6 +176,9 @@ enum Command {
     /// Print the public edge URL for a resource (`<ref>/<path>`)
     #[command(subcommand)]
     Web(WebCmd),
+    /// Where idfon keeps things, and its settings (`config show`)
+    #[command(subcommand)]
+    Config(ConfigCmd),
     /// Call any daemon method with raw JSON params (`rpc peer.list`)
     Rpc {
         /// Method name, e.g. peer.list (see docs/protocol.md)
@@ -468,6 +475,14 @@ struct InboxArgs {
     /// Show at most N recent messages
     #[arg(long, short = 'n', default_value_t = 20)]
     limit: usize,
+}
+
+#[derive(Subcommand)]
+enum ConfigCmd {
+    /// Print the home, config file, data dir and socket for this profile
+    Path,
+    /// Print every setting: its value, where it came from, its env var
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -842,7 +857,12 @@ fn run() -> io::Result<()> {
         relay_args.push("--relay-only".to_string());
     }
     RELAY_ARGS.set(relay_args).expect("run called once");
-    let socket: &str = cli.socket.as_deref().unwrap_or(DEFAULT_SOCKET);
+    let profile = idfon_config::paths::profile(cli.profile.as_deref());
+    PROFILE.set(profile.clone()).expect("run called once");
+    let default_socket = idfon_config::paths::socket(profile.as_deref())
+        .display()
+        .to_string();
+    let socket: &str = cli.socket.as_deref().unwrap_or(&default_socket);
     let identity = cli.identity.as_deref();
     let json = cli.json;
 
@@ -1553,6 +1573,59 @@ fn run() -> io::Result<()> {
             }
             Ok(())
         }
+        Command::Config(ConfigCmd::Path) => {
+            let profile = PROFILE.get().cloned().flatten();
+            let rows = [
+                ("home", idfon_config::paths::home()),
+                ("config", idfon_config::paths::config_file()),
+                ("data", idfon_config::paths::data_dir(profile.as_deref())),
+                ("socket", std::path::PathBuf::from(socket)),
+            ];
+            if json {
+                let map: serde_json::Map<String, Value> = rows
+                    .iter()
+                    .map(|(name, path)| (name.to_string(), json!(path.display().to_string())))
+                    .collect();
+                println!("{}", Value::Object(map));
+            } else {
+                for (name, path) in rows {
+                    println!("{name:<7}{}", path.display());
+                }
+            }
+            Ok(())
+        }
+        Command::Config(ConfigCmd::Show) => {
+            let mut rows = Vec::new();
+            for setting in idfon_config::SETTINGS {
+                let (value, source) = idfon_config::lookup(setting.env);
+                let shown = match (&value, setting.secret) {
+                    (Some(_), true) => "********".to_owned(),
+                    (Some(value), false) => value.clone(),
+                    (None, _) => "-".to_owned(),
+                };
+                let source = match source {
+                    idfon_config::Source::Env => "env",
+                    idfon_config::Source::File => "config",
+                    idfon_config::Source::Unset => "unset",
+                };
+                rows.push((setting, shown, source));
+            }
+            if json {
+                let list: Vec<Value> = rows
+                    .iter()
+                    .map(|(setting, shown, source)| {
+                        json!({"key": setting.key, "env": setting.env, "value": shown, "source": source, "help": setting.help})
+                    })
+                    .collect();
+                println!("{}", Value::Array(list));
+            } else {
+                println!("# {}  (env vars override it)", idfon_config::paths::config_file().display());
+                for (setting, shown, source) in rows {
+                    println!("{:<22} {:<28} {:<6} {}", setting.key, shown, source, setting.env);
+                }
+            }
+            Ok(())
+        }
         Command::Inbox(args) => {
             ux::cmd_inbox(socket, identity, args.from.as_deref(), args.limit, args.follow, json)
         }
@@ -2206,14 +2279,33 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
         Err(ClientError::Connect(_)) => {
             match find_daemon_binary() {
                 Some(daemon) => {
-                    let data_dir = Path::new(socket)
+                    let run_dir = Path::new(socket)
                         .parent()
                         .map(|dir| dir.to_path_buf())
                         .unwrap_or_default();
+                    let _ = std::fs::create_dir_all(&run_dir);
+                    // The profile's own socket: idfond picks the profile's
+                    // durable data dir (the one the apps use too). A custom
+                    // --socket keeps its data next to it, as before.
+                    let profile = PROFILE.get().cloned().flatten();
+                    let profile_socket = idfon_config::paths::socket(profile.as_deref());
+                    let location: Vec<String> = if Path::new(socket) == profile_socket {
+                        match profile {
+                            Some(name) => vec!["--profile".into(), name],
+                            None => vec![],
+                        }
+                    } else {
+                        vec![
+                            "--socket".into(),
+                            socket.into(),
+                            "--data-dir".into(),
+                            run_dir.to_string_lossy().into_owned(),
+                        ]
+                    };
                     // Capture the daemon's stderr (its eprintln diagnostics and
                     // the shared subscriber's stderr sink) so a CLI-spawned
                     // daemon is not a logging black hole.
-                    let daemon_log = data_dir.join("idfond.log");
+                    let daemon_log = run_dir.join("idfond.log");
                     // Two attempts: a just-killed daemon may still be dying
                     // (lock/socket still held), so the first spawn can lose.
                     let mut last_error = None;
@@ -2222,20 +2314,15 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
                             .map(Stdio::from)
                             .unwrap_or_else(|_| Stdio::null());
                         let spawned = StdCommand::new(&daemon)
-                            .args([
-                                "--socket",
-                                socket,
-                                "--data-dir",
-                                &data_dir.to_string_lossy(),
-                            ])
+                            .args(&location)
                             .args(RELAY_ARGS.get().map_or(&[][..], Vec::as_slice))
                             .env(
                                 "IDFON_IDLE_EXIT_SECS",
                                 if *KEEP_ALIVE.get().unwrap_or(&false) {
                                     "0".to_string()
                                 } else {
-                                    std::env::var("IDFON_IDLE_EXIT_SECS")
-                                        .unwrap_or_else(|_| DAEMON_IDLE_EXIT_SECS.into())
+                                    idfon_config::get("IDFON_IDLE_EXIT_SECS")
+                                        .unwrap_or_else(|| DAEMON_IDLE_EXIT_SECS.into())
                                 },
                             )
                             .stdin(Stdio::null())

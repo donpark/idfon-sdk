@@ -10,6 +10,7 @@ name = "idfon"
 path = "src/main.rs"
 
 [dependencies]
+idfon-config = { path = "../idfon-config" }
 clap = { version = "4", features = ["derive"] }
 idfon-client = { path = "../idfon-client" }
 idfon-protocol = { path = "../idfon-protocol" }

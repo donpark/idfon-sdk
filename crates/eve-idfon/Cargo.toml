@@ -10,6 +10,7 @@ name = "eve-idfon"
 path = "src/main.rs"
 
 [dependencies]
+idfon-config = { path = "../idfon-config" }
 anyhow = "1"
 axum = "0.8"
 base64 = "0.23"

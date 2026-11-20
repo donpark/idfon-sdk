@@ -218,8 +218,8 @@ fn default_root() -> PathBuf {
     if let Some(home) = std::env::var_os("EVE_VOICE_HOME") {
         return PathBuf::from(home).join("voice-records");
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".idfon").join("eve-voice-records");
+    if std::env::var_os("HOME").is_some() || std::env::var_os("IDFON_HOME").is_some() {
+        return idfon_config::paths::home().join("eve-voice-records");
     }
     std::env::temp_dir().join("idfon-eve-voice-records")
 }

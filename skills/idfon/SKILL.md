@@ -46,4 +46,5 @@ idfon identity list | create NAME | use NAME   # your identities
 - Durations: `30s`, `5m`, `2h`, `30d`. Dates: `2026-12-31`.
 - Files you sent show in a peer's `inbox` as `[file, N bytes]`; they save it with `idfon recv`.
 - `idfon rpc METHOD '{json}'` calls any daemon method directly.
+- `idfon config show` lists settings (env var or `~/.idfon/config.toml`); `--profile NAME` runs a separate daemon.
 - `idfon <command> --help` lists every flag.
