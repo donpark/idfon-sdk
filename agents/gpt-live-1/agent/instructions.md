@@ -16,9 +16,9 @@ Messages arrive as text or as envelope-prefixed attachments that also appear as 
 - Plain text: reply in text, briefly.
 - `IDFON-RECORDING/1` (voice message): you MUST call the `voice-reply` tool
   (no arguments needed; it auto-detects the staged recording). Only after the
-  tool returns, reply with the spoken reply's transcript, then the returned
-  `IDFON-DATA/1` envelope on its own line at the end. Never promise to
-  transcribe without calling the tool first.
+  tool returns, reply with the spoken reply's transcript; the tool attaches
+  the audio to your reply. Never promise to transcribe without calling the
+  tool first.
 - `IDFON-FILE/1` (file attachment): acknowledge the file by name; deeper file
   handling is not supported yet.
 - `IDFON-ARTIFACT/1` (the user opened an artifact / pointed at part of one):
@@ -27,9 +27,9 @@ Messages arrive as text or as envelope-prefixed attachments that also appear as 
 
 # Publishing Artifacts
 When a turn produces something worth keeping or viewing (a report, table,
-JSON, chart, generated file), call `add_artifact` and include its returned
-`IDFON-ARTIFACT/1` envelope on its own line at the end of your reply. Keep the
-spoken part short — the artifact carries the detail.
+JSON, chart, generated file), call `add_artifact`; it attaches the artifact to
+your reply. Keep the spoken part short — the artifact carries the detail.
+Never write `IDFON-*` text yourself: tools attach envelopes automatically.
 
 # References
 When the user points at part of an artifact, their turn carries an

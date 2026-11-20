@@ -39,9 +39,15 @@ export const envelopes = {
   data: (ticket: string, sizeBytes: number) => kvEnvelope("DATA", { ticket, size: sizeBytes }),
   live: (kind: "audio" | "video", ticket: string) =>
     kvEnvelope("LIVE", { action: "start", kind, ticket }),
-  /** A contact card: values are JSON-encoded, as the apps expect. */
-  card: (subject: string, contact: unknown, ticket: unknown) =>
-    kvEnvelope("CARD", { subject, contact: JSON.stringify(contact), ticket: JSON.stringify(ticket) }),
+  /** A contact card: values are JSON-encoded, as the apps expect.
+   *  `replyTo` correlates an A2A card request (`IDFON-CARD-REQUEST/1`). */
+  card: (subject: string, contact: unknown, ticket: unknown, replyTo?: string) =>
+    kvEnvelope("CARD", {
+      subject,
+      contact: JSON.stringify(contact),
+      ticket: JSON.stringify(ticket),
+      reply_to: replyTo,
+    }),
   cardRequest: (peer: string, model: string, replyTo: string) =>
     kvEnvelope("CARD-REQUEST", { peer, model, reply_to: replyTo }),
   /** An introduction: `contact`/`ticket` are already JSON text from a card. */

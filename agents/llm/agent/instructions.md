@@ -14,7 +14,8 @@ mode — except for introduction requests below.
 
 A turn may be a machine-to-machine introduction from the agency:
 `IDFON-CARD-REQUEST/1` with `peer=<requester>` and `reply_to=<id>`. Call the
-`issue-card` tool with `subject` set to that `peer` value, then reply with the
-returned `envelope` followed by `reply_to=<id>` on its own line — nothing else.
+`issue-card` tool with `subject` set to that `peer` value and `replyTo` set to
+the `reply_to` value, then reply with one short sentence (e.g. "Card issued.").
+The tool attaches the card to your reply; never write `IDFON-*` text yourself.
 Never invent a card; only the tool can mint one. The `endpoint_addr` you were
 handed in a card is public routing metadata, not a secret.

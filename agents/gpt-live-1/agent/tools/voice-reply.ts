@@ -28,6 +28,8 @@ const DELEGATION_MODEL = "openai/gpt-6-luna";
 // wires extensions/idfon.ts, and e2e scripts patch that file); env only as a
 // manual-override fallback.
 import idfonExtension from "eve-idfon";
+import { emitEnvelope } from "eve-idfon/outbox";
+import { envelopes } from "eve-idfon/envelopes";
 
 const live = () =>
   (idfonExtension.config?.live ?? {}) as {
@@ -208,8 +210,8 @@ export default defineTool({
     "Turn the user's voice message into a spoken reply using the GPT-Live voice model. " +
     "Call it after a voice message arrives (omit the path to auto-detect the " +
     "staged recording, or pass optional extra " +
-    "guidance for the spoken reply. Returns the spoken reply's transcript and an " +
-    "IDFON-DATA/1 envelope for the reply audio; include the envelope in your reply text.",
+    "guidance for the spoken reply. Returns the spoken reply's transcript; the reply audio is " +
+    "attached to your reply automatically (do not write the ticket or any IDFON-* text).",
   inputSchema: z.object({
     path: z.string().min(1).optional().describe("Sandbox path of the staged voice recording; omit to auto-detect the newest staged recording"),
     durationMs: z.number().int().positive().optional().describe("Recording duration in ms from the IDFON-RECORDING/1 envelope"),
@@ -244,12 +246,13 @@ export default defineTool({
     const wav = wavWrap(reply.pcm);
 
     const blob = await putAudio(wav);
+    emitEnvelope(ctx.session.id, envelopes.data(blob.ticket, blob.size_bytes));
 
     return {
       transcript: reply.transcript,
       ticket: blob.ticket,
       size_bytes: blob.size_bytes,
-      envelope: `IDFON-DATA/1\nticket=${blob.ticket}\nsize=${blob.size_bytes}`,
+      delivered: "attached to your reply",
       reply_seconds: Math.round((reply.pcm.length / (RATE * 2)) * 10) / 10,
     };
   },
