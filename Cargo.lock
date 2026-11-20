@@ -2096,6 +2096,7 @@ dependencies = [
  "ed25519-dalek 3.0.0",
  "futures-util",
  "getrandom 0.4.3",
+ "idfon-config",
  "idfon-core",
  "idfon-h3",
  "idfon-media",
@@ -3322,6 +3323,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "http",
+ "idfon-config",
  "idfon-core",
  "idfon-h1",
  "idfon-protocol",
@@ -3338,6 +3340,7 @@ version = "0.11.0"
 dependencies = [
  "clap",
  "idfon-client",
+ "idfon-config",
  "idfon-protocol",
  "idfon-telemetry",
  "serde_json",
@@ -3347,10 +3350,18 @@ dependencies = [
 name = "idfon-client"
 version = "0.11.0"
 dependencies = [
+ "idfon-config",
  "idfon-protocol",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "idfon-config"
+version = "0.11.0"
+dependencies = [
+ "toml",
 ]
 
 [[package]]
@@ -3362,6 +3373,7 @@ dependencies = [
  "ed25519-dalek 3.0.0",
  "futures-util",
  "getrandom 0.4.3",
+ "idfon-config",
  "idfon-protocol",
  "iroh",
  "iroh-gossip",
@@ -3385,6 +3397,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek 3.0.0",
  "futures-util",
+ "idfon-config",
  "idfon-core",
  "idfon-gateway",
  "idfon-h3",
@@ -3485,6 +3498,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "idfon-config",
  "idfon-core",
  "idfon-h3",
  "idfon-protocol",
@@ -3662,6 +3676,8 @@ dependencies = [
 name = "idfond"
 version = "0.11.0"
 dependencies = [
+ "clap",
+ "idfon-config",
  "serde_json",
 ]
 

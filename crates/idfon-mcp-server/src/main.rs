@@ -26,8 +26,8 @@ const ERR_UNSUPPORTED_VERSION: i64 = -32022;
 #[derive(Parser)]
 #[command(name = "idfon-mcp-server", about = "Expose idfon capabilities as MCP tools")]
 struct Cli {
-    /// Path to the idfond Unix socket.
-    #[arg(long, default_value = "/tmp/idfon/idfond.sock")]
+    /// Path to the idfond Unix socket (default: the profile's socket)
+    #[arg(long, default_value_t = idfon_client::socket_path_for(None))]
     socket: String,
     /// Session identity override.
     #[arg(long)]
