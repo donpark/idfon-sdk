@@ -20,7 +20,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use ed25519_dalek::SigningKey;
+use idfon_core::IdentityKey;
 use eve_idfon::{
     live::{LiveCallContext, LiveCallFuture, LiveCallHandler, AUDIO_PUBLISH},
     records, IpcFrame, ReplyTarget, Targets,
@@ -91,7 +91,7 @@ pub struct VoiceMedia {
 /// own `IDFON-CALL/1` transcript snapshots and delegation turns).
 pub struct CallPlatform {
     pub transport: Arc<IrohTransport>,
-    pub key: SigningKey,
+    pub key: IdentityKey,
     pub holder_endpoint_id: String,
     pub caller_addr: EndpointAddr,
     pub caller_peer_id: String,

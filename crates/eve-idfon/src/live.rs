@@ -13,7 +13,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
-use ed25519_dalek::SigningKey;
+use idfon_core::IdentityKey;
 use futures_util::future::BoxFuture;
 use idfon_core::transport::IrohTransport;
 use serde_json::Value;
@@ -50,7 +50,7 @@ pub struct LiveCallContext {
     pub conversation: Option<String>,
     pub holder_endpoint_id: String,
     pub transport: Arc<IrohTransport>,
-    pub key: SigningKey,
+    pub key: IdentityKey,
     pub targets: Targets,
     pub out_tx: mpsc::Sender<IpcFrame>,
     /// Opaque agent/channel configuration for this handler.

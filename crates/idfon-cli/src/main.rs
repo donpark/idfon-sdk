@@ -283,6 +283,9 @@ enum PeerCmd {
         /// call_kit (80). auto = the shell's default for the contact's kind
         #[arg(long = "call-mode", value_name = "MODE")]
         call_mode: Option<String>,
+        /// Replace the peer's aliases (repeatable); omit to keep them
+        #[arg(long = "alias", value_name = "ALIAS")]
+        aliases: Vec<String>,
     },
     /// Manage one peer's concrete devices
     Device {
@@ -1137,7 +1140,7 @@ fn run() -> io::Result<()> {
                     name,
                     endpoint_id,
                     endpoint_addr,
-                    aliases: Some(vec![]),
+                    aliases: None,
                     call_mode,
                     mcp_ticket,
                     contact_ticket: None,
@@ -1151,6 +1154,7 @@ fn run() -> io::Result<()> {
             endpoint_id,
             endpoint_addr,
             call_mode,
+            aliases,
         }) => finish(
             call(
                 socket,
@@ -1160,7 +1164,9 @@ fn run() -> io::Result<()> {
                     name,
                     endpoint_id,
                     endpoint_addr,
-                    aliases: Some(vec![]),
+                    // Absent = keep: the daemon replaces aliases whenever the
+                    // param is present (an empty list used to wipe them).
+                    aliases: (!aliases.is_empty()).then_some(aliases),
                     call_mode,
                 },
                 identity,

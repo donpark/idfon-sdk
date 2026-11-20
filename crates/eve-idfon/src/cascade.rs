@@ -17,9 +17,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use ed25519_dalek::SigningKey;
+use idfon_core::IdentityKey;
 use idfon_core::transport::{IrohTransport, MessageTransport};
-use idfon_core::{peer_id, sign_message_with_ticket, CapabilityTicket};
+use idfon_core::{sign_message_with_ticket, CapabilityTicket};
 use idfon_protocol::{encode_call_transcript, CallTranscript, MessageContent};
 use idfon_voice::stream::EnvelopeStripper;
 use iroh::EndpointAddr;
@@ -114,7 +114,7 @@ fn push_at(
 /// or poisoned registry costs one missing snapshot, never the turn (the final
 /// reply message still arrives).
 pub async fn push_and_send(
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     reply_ticket: Option<&CapabilityTicket>,
     peer: &str,
@@ -161,7 +161,7 @@ pub async fn push_and_send(
 
 #[allow(clippy::too_many_arguments)]
 async fn send_snapshot(
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     reply_ticket: Option<&CapabilityTicket>,
     peer: &str,
@@ -181,7 +181,7 @@ async fn send_snapshot(
     let ticket = ticket_for_target(peer, reply_ticket.cloned());
     let envelope = sign_message_with_ticket(
         key,
-        peer_id(key),
+        key.peer_id(),
         next_message_id("eve_unit_"),
         MessageContent::Text { text },
         format!("eve-unit-{turn_id}-{step_index}-{sequence}"),

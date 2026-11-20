@@ -12,11 +12,10 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use clap::{Parser, Subcommand};
-use ed25519_dalek::SigningKey;
+use idfon_core::IdentityKey;
 use idfon_core::transport::{IrohTransport, MessageTransport, TransportError};
 use idfon_core::{
-    peer_id, sign_message, sign_message_with_ticket, issue_capability_ticket_with_voice,
-    verify_message, AuthError, CapabilityTicket,
+    sign_message, sign_message_with_ticket, verify_message, AuthError, CapabilityTicket, TicketSpec,
 };
 use idfon_protocol::{
     AckStatus, Capability, MessageAck, MessageContent, MessageEnvelope,
@@ -471,7 +470,7 @@ pub async fn run(live_registry: live::LiveCallRegistry) -> Result<()> {
         }
         Mode::Id => {
             let key = load_key(key_file.as_deref(), false)?;
-            println!("{}", idfon_core::peer_id(&key));
+            println!("{}", key.peer_id());
             Ok(())
         }
         Mode::Ticket {
@@ -495,16 +494,16 @@ pub async fn run(live_registry: live::LiveCallRegistry) -> Result<()> {
             grants.extend(capabilities.into_iter().map(Capability::new));
             println!(
                 "{}",
-                issue_capability_ticket_with_voice(
-                    &key,
-                    subject,
-                    None,
-                    grants,
-                    expires_at,
-                    ticket_id,
-                    Some(voice),
-                    None,
-                )?
+                TicketSpec {
+                    subject: subject,
+                    conversation: None,
+                    capabilities: grants,
+                    expires_at: expires_at,
+                    ticket_id: ticket_id.into(),
+                    voice: Some(voice),
+                    path_scope: None,
+                }
+                .issue(&key)?
                 .token()
             );
             Ok(())
@@ -831,7 +830,7 @@ fn load_ticket(path: &Path) -> Result<CapabilityTicket> {
     CapabilityTicket::decode(token.trim()).with_context(|| format!("parse ticket {}", path.display()))
 }
 
-fn load_key(path: Option<&Path>, ephemeral: bool) -> Result<SigningKey> {
+fn load_key(path: Option<&Path>, ephemeral: bool) -> Result<IdentityKey> {
     let value = match path {
         Some(path) => Some(
             std::fs::read_to_string(path)
@@ -840,11 +839,11 @@ fn load_key(path: Option<&Path>, ephemeral: bool) -> Result<SigningKey> {
         None => std::env::var("EVE_IDFON_KEY").ok(),
     };
     match value.filter(|value| !value.trim().is_empty()) {
-        Some(value) => idfon_core::decode_signing_key(value.trim())
+        Some(value) => idfon_core::IdentityKey::decode(value.trim())
             .ok_or_else(|| anyhow!("invalid key: expected 64 hex characters")),
         None if ephemeral => {
             tracing::warn!(target: "idfon.holder", "no stable key; using an ephemeral identity");
-            Ok(idfon_core::generate_identity())
+            Ok(idfon_core::IdentityKey::generate())
         }
         None => Err(anyhow!(
             "no key configured; pass --key-file, EVE_IDFON_KEY, or --ephemeral"
@@ -856,7 +855,7 @@ async fn serve(
     socket: PathBuf,
     allow: Vec<String>,
     allow_file: Option<PathBuf>,
-    key: SigningKey,
+    key: IdentityKey,
     blob_dir: PathBuf,
     reply_ticket: Option<CapabilityTicket>,
     live_ttl_secs: u64,
@@ -874,7 +873,7 @@ async fn serve(
     let listener = UnixListener::bind(&socket)
         .with_context(|| format!("bind Unix socket {}", socket.display()))?;
     let transport = Arc::new(
-        IrohTransport::bind_with_key(Some(idfon_core::signing_key_bytes(&key)))
+        IrohTransport::builder().identity(&key).port_from_config().bind()
             .await
             .context("bind iroh endpoint")?,
     );
@@ -972,7 +971,7 @@ async fn serve(
             }
         })
     };
-    let holder_peer_id = peer_id(&key);
+    let holder_peer_id = key.peer_id();
     // Advertised on every ticket this holder mints and used to decide whether
     // inbound live controls should reach a registered live-call handler.
     let voice_route = voice_route_from_live_params(&live_params);
@@ -1408,7 +1407,7 @@ async fn handle_message(
     allow: Arc<RwLock<Vec<String>>>,
     holder_peer_id: String,
     transport_for_calls: Arc<IrohTransport>,
-    key_for_calls: SigningKey,
+    key_for_calls: IdentityKey,
     live_registry: Arc<live::LiveCallRegistry>,
     live_params: serde_json::Value,
 ) -> std::result::Result<MessageAck, TransportError> {
@@ -1766,7 +1765,7 @@ async fn admit_message(rate_limits: &RateLimits, peer_id: &str) -> bool {
 /// the holder's reply shares the trace of the message that started it.
 async fn handle_reply(
     frame: IpcFrame,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     targets: &Targets,
     reply_ticket: Option<&CapabilityTicket>,
@@ -1799,7 +1798,7 @@ async fn handle_reply(
 
 async fn handle_reply_inner(
     frame: IpcFrame,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     targets: &Targets,
     reply_ticket: Option<&CapabilityTicket>,
@@ -1846,7 +1845,7 @@ async fn handle_reply_inner(
         let reply_ticket = ticket_for_target(&target.peer_id, reply_ticket.cloned());
         let mut envelope = sign_message_with_ticket(
             key,
-            peer_id(key),
+            key.peer_id(),
             message_id.clone(),
             MessageContent::Text { text },
             idempotency_key.unwrap_or_else(|| format!("eve-reply-{in_reply_to}")),
@@ -1902,7 +1901,7 @@ async fn handle_status(
     in_reply_to: String,
     event: String,
     data: serde_json::Value,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     targets: &Targets,
     reply_ticket: Option<&CapabilityTicket>,
@@ -1924,7 +1923,7 @@ async fn handle_status(
         .cloned();
     let mut envelope = sign_message_with_ticket(
         key,
-        peer_id(key),
+        key.peer_id(),
         message_id.clone(),
         MessageContent::Text {
             text: encode_status_envelope(&event, &data)?,
@@ -1971,7 +1970,7 @@ async fn handle_input(
     conversation: Option<String>,
     requests: serde_json::Value,
     trace: String,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     out_tx: mpsc::Sender<IpcFrame>,
 ) -> Result<()> {
@@ -1983,7 +1982,7 @@ async fn handle_input(
     let message_id = next_message_id("eve_input_");
     let mut envelope = sign_message(
         key,
-        peer_id(key),
+        key.peer_id(),
         message_id.clone(),
         MessageContent::Text { text },
         format!("eve-input-{request_id}"),
@@ -2119,7 +2118,7 @@ async fn handle_peer_send(
     capability_ticket: serde_json::Value,
     a2a_depth: u8,
     trace: String,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     out_tx: mpsc::Sender<IpcFrame>,
 ) -> Result<()> {
@@ -2150,7 +2149,7 @@ async fn handle_peer_send(
     };
     let mut envelope = sign_message_with_ticket(
         key,
-        peer_id(key),
+        key.peer_id(),
         message_id.clone(),
         MessageContent::Text { text },
         format!("eve-peer-{request_id}"),
@@ -2394,7 +2393,7 @@ async fn handle_ticket_issue(
     request_id: String,
     subject: String,
     capabilities: Vec<String>,
-    key: &SigningKey,
+    key: &IdentityKey,
     transport: &IrohTransport,
     voice: &VoiceRoute,
     delegate_allow_file: Option<&str>,
@@ -2407,16 +2406,16 @@ async fn handle_ticket_issue(
     }
     let mut grants = vec![Capability::MessageReceive];
     grants.extend(capabilities.into_iter().map(Capability::new));
-    let ticket = issue_capability_ticket_with_voice(
-        key,
-        Some(subject),
-        None,
-        grants,
-        None,
-        format!("eve-ticket-{}", now_seconds()),
-        Some(voice.clone()),
-        None,
-    )?;
+    let ticket = TicketSpec {
+        subject: Some(subject),
+        conversation: None,
+        capabilities: grants,
+        expires_at: None,
+        ticket_id: (format!("eve-ticket-{}", now_seconds())).into(),
+        voice: Some(voice.clone()),
+        path_scope: None,
+    }
+    .issue(key)?;
     out_tx
         .send(IpcFrame::TicketIssueResult {
             request_id,
@@ -2634,7 +2633,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use idfon_core::{generate_identity, issue_capability_ticket, sign_message_with_ticket};
+    use idfon_core::sign_message_with_ticket;
     use tokio::io::duplex;
 
     #[test]
@@ -2785,28 +2784,30 @@ mod tests {
 
     #[test]
     fn capability_tickets_ride_only_to_their_issuer() {
-        let eve = generate_identity();
-        let phone = generate_identity();
-        let eve_id = peer_id(&eve);
-        let phone_id = peer_id(&phone);
+        let eve = IdentityKey::generate();
+        let phone = IdentityKey::generate();
+        let eve_id = eve.peer_id();
+        let phone_id = phone.peer_id();
         // This holder's grant FOR the phone is not a credential when this
         // holder sends TO the phone (the phone wants its own grant) — dropped.
-        let eve_issued = issue_capability_ticket(
-            &eve,
-            Some(phone_id.clone()),
-            vec![Capability::MessageReceive],
-            None,
-            "eve-for-phone",
-        ).unwrap();
+        let eve_issued = TicketSpec {
+            subject: Some(phone_id.clone()),
+            capabilities: vec![Capability::MessageReceive],
+            expires_at: None,
+            ticket_id: "eve-for-phone".into(),
+            ..Default::default()
+        }
+        .issue(&eve).unwrap();
         assert!(ticket_for_target(&phone_id, Some(eve_issued)).is_none());
         // The phone's grant for eve does ride to the phone.
-        let phone_issued = issue_capability_ticket(
-            &phone,
-            Some(eve_id.clone()),
-            vec![Capability::MessageReceive],
-            None,
-            "phone-for-eve",
-        ).unwrap();
+        let phone_issued = TicketSpec {
+            subject: Some(eve_id.clone()),
+            capabilities: vec![Capability::MessageReceive],
+            expires_at: None,
+            ticket_id: "phone-for-eve".into(),
+            ..Default::default()
+        }
+        .issue(&phone).unwrap();
         assert!(ticket_for_target(&phone_id, Some(phone_issued)).is_some());
         assert!(ticket_for_target(&phone_id, None).is_none());
     }
@@ -2925,17 +2926,18 @@ mod tests {
 
     #[test]
     fn validation_requires_a_holder_ticket_and_real_remote_endpoint() {
-        let holder = generate_identity();
-        let sender = generate_identity();
-        let sender_id = peer_id(&sender);
-        let holder_id = peer_id(&holder);
-        let ticket = issue_capability_ticket(
-            &holder,
-            Some(sender_id.clone()),
-            vec![Capability::MessageReceive],
-            None,
-            "ticket-1",
-        ).unwrap();
+        let holder = IdentityKey::generate();
+        let sender = IdentityKey::generate();
+        let sender_id = sender.peer_id();
+        let holder_id = holder.peer_id();
+        let ticket = TicketSpec {
+            subject: Some(sender_id.clone()),
+            capabilities: vec![Capability::MessageReceive],
+            expires_at: None,
+            ticket_id: "ticket-1".into(),
+            ..Default::default()
+        }
+        .issue(&holder).unwrap();
         let message = sign_message_with_ticket(
             &sender,
             sender_id.clone(),
@@ -2970,13 +2972,14 @@ mod tests {
             Err(HolderError::Unauthorized)
         ));
 
-        let expired = issue_capability_ticket(
-            &holder,
-            Some(sender_id.clone()),
-            vec![Capability::MessageReceive],
-            Some("2000-01-01T00:00:00Z".into()),
-            "ticket-2",
-        ).unwrap();
+        let expired = TicketSpec {
+            subject: Some(sender_id.clone()),
+            capabilities: vec![Capability::MessageReceive],
+            expires_at: Some("2000-01-01T00:00:00Z".into()),
+            ticket_id: "ticket-2".into(),
+            ..Default::default()
+        }
+        .issue(&holder).unwrap();
         let expired_message = sign_message_with_ticket(
             &sender,
             sender_id.clone(),
@@ -2996,13 +2999,14 @@ mod tests {
 
         // A public ticket has no subject: admitted only by an opted-in holder,
         // and only while it grants nothing beyond receive.
-        let public_ticket = issue_capability_ticket(
-            &holder,
-            None,
-            vec![Capability::MessageReceive],
-            None,
-            "ticket-public",
-        ).unwrap();
+        let public_ticket = TicketSpec {
+            subject: None,
+            capabilities: vec![Capability::MessageReceive],
+            expires_at: None,
+            ticket_id: "ticket-public".into(),
+            ..Default::default()
+        }
+        .issue(&holder).unwrap();
         let public_message = sign_message_with_ticket(
             &sender,
             sender_id.clone(),
@@ -3023,13 +3027,14 @@ mod tests {
             validate_message(&public_message, &sender_id, &[], &holder_id, false),
             Err(HolderError::CapabilityDenied)
         ));
-        let public_write = issue_capability_ticket(
-            &holder,
-            None,
-            vec![Capability::MessageReceive, Capability::MessageSend],
-            None,
-            "ticket-public-wide",
-        ).unwrap();
+        let public_write = TicketSpec {
+            subject: None,
+            capabilities: vec![Capability::MessageReceive, Capability::MessageSend],
+            expires_at: None,
+            ticket_id: "ticket-public-wide".into(),
+            ..Default::default()
+        }
+        .issue(&holder).unwrap();
         let wide_message = sign_message_with_ticket(
             &sender,
             sender_id.clone(),
