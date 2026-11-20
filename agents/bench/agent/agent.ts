@@ -15,5 +15,5 @@ export default defineAgent({
       const ping = /BENCH-PING\s+(\S+)/.exec(lastUserMessage);
       return ping ? `BENCH-PONG ${ping[1]}` : `bench peer ready: ${lastUserMessage}`;
     }),
-  ...(selected ? {} : { modelContextWindowTokens: 4096 }),
+  ...(selected ? {} : { modelContextWindowTokens: 32_768 }),
 });

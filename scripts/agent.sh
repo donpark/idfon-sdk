@@ -15,9 +15,22 @@ available_agents() {
   for directory in "$root"/agents/*; do
     [[ -d "$directory" ]] || continue
     candidate=${directory##*/}
-    [[ -f "$root/scripts/$candidate-serve.sh" ]] && printf '%s ' "$candidate"
+    serve_script "$candidate" >/dev/null && printf '%s ' "$candidate"
   done
   return 0
+}
+
+# The serve script for an agent: its own scripts/<agent>-serve.sh when it has
+# special needs, else the shared live-voice-serve.sh (defaults from
+# agents/<agent>/serve.env). Any agents/<name>/agent/agent.ts is servable.
+serve_script() {
+  if [[ -f "$root/scripts/$1-serve.sh" ]]; then
+    printf '%s' "$root/scripts/$1-serve.sh"
+  elif [[ -f "$root/agents/$1/agent/agent.ts" ]]; then
+    printf '%s' "$root/scripts/live-voice-serve.sh"
+  else
+    return 1
+  fi
 }
 
 all_agents() {
@@ -92,11 +105,11 @@ if [[ "$name" == all ]]; then
   exit "$status"
 fi
 
-serve="$root/scripts/$name-serve.sh"
+serve=$(serve_script "$name" || true)
 if [[ "$action" == build || "$action" == clean ]]; then
   [[ -d "$root/agents/$name" ]] || { echo "no agent '$name' under agents/" >&2; usage; }
 else
-  [[ -d "$root/agents/$name" && -f "$serve" ]] || { echo "no serve script registered for agent '$name'" >&2; usage; }
+  [[ -d "$root/agents/$name" && -n "$serve" ]] || { echo "no agent '$name' (needs agents/$name/agent/agent.ts)" >&2; usage; }
 fi
 
 agent_dir="$root/agents/$name"
