@@ -24,7 +24,12 @@ cd "$root"
 # The daemon core is reached through the vendored dylib, so build it first (the
 # thin idfond links it); flags must match native/build.zig.
   core_cargo build --release -p iroh-c-ffi
-core_cargo build --release -p idfond -p idfon-edge && cargo build --release -p idfon-cli
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
+# The edge lives in a sibling idfon-edge checkout (private; set IDFON_EDGE to
+# use another). It builds into the same shared target dir.
+edge_repo="${IDFON_EDGE:-$root/../idfon-edge}"
+[ -d "$edge_repo" ] || { echo "idfon-edge not found at $edge_repo (clone it beside idfon-sdk or set IDFON_EDGE)" >&2; exit 1; }
+(cd "$edge_repo" && cargo build --release -p idfon-edge)
 
 # A relink can leave an ad-hoc signature that no longer matches the pages; the
 # kernel then SIGKILLs the process at exec ("Code Signature Invalid").

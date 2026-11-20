@@ -14,9 +14,10 @@ Clone them side by side (for example in `~/dev`):
 
 | Repo | What it holds |
 | --- | --- |
-| [idfon-core](https://github.com/donpark/idfon-core) | protocol, identity, transport, media, the daemon (`idfond`), the C ABI the apps link, the edge, and the Swift packages both apps use |
+| [idfon-core](https://github.com/donpark/idfon-core) | protocol, identity, transport, media, the daemon (`idfond`), the C ABI the apps link, and the Swift packages both apps use |
 | [idfon-sdk](https://github.com/donpark/idfon-sdk) | the `idfon` CLI, the MCP server, the Eve integration and agents, the voice-agent runner, and the end-to-end tests |
 | idfon-ios, idfon-mac (private) | the iPhone and macOS apps |
+| idfon-edge (private) | the `idfon.net` edge server, its deployments, and the relay auth service |
 | idfon-home, idfon (private) | product docs and planning; the pre-split archive and model R&D |
 
 idfon-sdk and both apps build idfon-core from `../idfon-core`; set
