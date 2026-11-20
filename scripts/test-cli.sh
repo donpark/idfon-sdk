@@ -143,8 +143,8 @@ S=$(Q "$A" access check --subject "$B_PID" --capability bogus.cap --json)
 echo "$S" | jq -e '.ok == true and .result.allowed == false' >/dev/null
 echo "PASS: open capability with no grant reports not-allowed"
 T=$(Q "$A" access ticket --subject "$B_PID" --capability message.send)
-echo "$T" | jq -e '. != null and . != ""' >/dev/null
-echo "PASS: access ticket mints JSON capability ticket"
+[ -n "$T" ] && [ "$T" != null ]
+echo "PASS: access ticket prints the ticket"
 # M5: capability names are open namespaced strings, not a fixed enum.
 ok "access allow (open namespaced capability)" Q "$A" access allow --subject "$B_PID" --capability vendor.custom.thing --json
 S=$(Q "$A" access check --subject "$B_PID" --capability vendor.custom.thing --json)

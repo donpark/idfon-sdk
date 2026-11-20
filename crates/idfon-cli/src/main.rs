@@ -21,6 +21,8 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
+
+mod ux;
 use idfon_client::{Client, ClientError};
 use idfon_protocol::{
     encode_json,
@@ -61,8 +63,20 @@ fn find_daemon_binary() -> Option<PathBuf> {
 #[command(
     name = "idfon",
     version,
-    about = "Control the idfond daemon: identity, peers, messaging, data transfer, live audio",
-    after_help = "Data transfer:  cat FILE | idfon put  ->  ticket;  idfon get TICKET > copy\nSignaled:       idfon send PEER --file < FILE  |  idfon recv > copy\nLive broadcast: idfon send --stream --file FILE --loop  ->  ticket;  idfon get TICKET > copy.wav\n1:1 call:       idfon send PEER --stream --file FILE  |  idfon recv --stream --out copy.wav\n                (calls are session-scoped: they block until hangup and print no ticket)\nTickets:        get TICKET fetches blob tickets; iroh-live: tickets capture live audio"
+    about = "idfon: message, share files and stream audio with your contacts, peer to peer",
+    after_help = "Examples:
+  idfon peer add carol.vcf               add a contact from a card, link or ticket
+  idfon send bob \"hi\" --wait             message bob and print his reply
+  idfon inbox --from bob                 messages you received
+  idfon send bob --file notes.txt        send a file;  idfon recv -o copy.txt  to receive one
+  idfon put notes.txt                    store a file, print a download ticket
+  idfon get TICKET -o copy.txt           download a ticket
+  idfon live publish song.wav --loop     broadcast audio, print a live ticket
+  idfon call bob --file song.wav         1:1 call;  idfon answer  to take one
+  idfon access ticket bob --expires 30d  let bob message you
+  idfon rpc peer.list                    any daemon method, raw JSON
+
+Peers are named by name, alias or id everywhere. Add --json for machine output."
 )]
 struct Cli {
     /// Daemon socket path
@@ -75,16 +89,16 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
     /// Auto-started daemon: disable idle shutdown (stays running until `idfon shutdown`)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, hide = true)]
     keep_alive: bool,
     /// Auto-started daemon: relay URLs (per-run parameter; docs/relay-config.md)
-    #[arg(long, global = true, value_name = "URLS")]
+    #[arg(long, global = true, value_name = "URLS", hide = true)]
     relay_urls: Option<String>,
     /// Auto-started daemon: relay shared bearer token
-    #[arg(long, global = true, value_name = "TOKEN")]
+    #[arg(long, global = true, value_name = "TOKEN", hide = true)]
     relay_token: Option<String>,
     /// Auto-started daemon: drop IP transports (relay-only)
-    #[arg(long, global = true)]
+    #[arg(long, global = true, hide = true)]
     relay_only: bool,
     /// Replace request params with a JSON document read from stdin
     #[arg(long, global = true, hide = true)]
@@ -95,6 +109,32 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Send a message (`send bob "hi"`) or a file (`send bob --file F`) to a peer
+    Send(SendArgs),
+    /// Show messages you received (`--from PEER`, `--follow`)
+    Inbox(InboxArgs),
+    /// Save a file a peer sent you (waits for one if none arrived recently)
+    Recv(RecvArgs),
+    /// Manage contacts (`peer add` takes a .vcf card, idfon://add link or ticket)
+    #[command(subcommand)]
+    Peer(PeerCmd),
+    /// Rooms: group messaging with a member list
+    #[command(subcommand)]
+    Room(RoomCmd),
+    /// Store a file; prints a download ticket anyone can use
+    Put(PutArgs),
+    /// Download a ticket (blob tickets: bytes; live tickets: record audio)
+    Get(GetArgs),
+    /// Live audio broadcasts: publish, list, stop, watch
+    #[command(subcommand)]
+    Live(LiveCmd),
+    /// Call a peer 1:1, streaming FILE (blocks until they hang up)
+    Call(CallArgs),
+    /// Answer the next incoming 1:1 call and record it
+    Answer(AnswerArgs),
+    /// Who may message you: check, grant, or hand out tickets
+    #[command(subcommand)]
+    Access(AccessCmd),
     /// Show daemon status
     Status,
     /// Verify local identity and peer channel endpoint consistency
@@ -104,24 +144,9 @@ enum Command {
     /// Manage identities
     #[command(subcommand)]
     Identity(IdentityCmd),
-    /// Manage peers
-    #[command(subcommand)]
-    Peer(PeerCmd),
     /// vCard exchange: export a card carrying the idfon ticket, import .vcf files
     #[command(subcommand)]
     Contact(ContactCmd),
-    /// Send content: --text chat, --file blob, --stream live (PEER = 1:1, no PEER = broadcast)
-    ///
-    /// Ticket contract: --text returns an operation id (delivery via
-    /// `operation wait`); --file prints the BlobTicket after delivery;
-    /// --stream without PEER prints a live ticket; --stream with PEER is a
-    /// 1:1 call that blocks until hangup and prints no ticket.
-    Send(SendArgs),
-    /// Receive a peer push: signaled blob (--file mode) or 1:1 stream (--stream)
-    Recv(RecvArgs),
-    /// Rooms: a `conversation` topic plus a local member list
-    #[command(subcommand)]
-    Room(RoomCmd),
     /// Fetch daemon events (follow with --follow)
     Events(EventsArgs),
     /// Block until a matching event arrives (--json prints the Response envelope,
@@ -130,21 +155,12 @@ enum Command {
     /// Track async operations
     #[command(subcommand)]
     Operation(OperationCmd),
-    /// Check and manage capabilities (grants gate YOUR side: message.send =
-    /// you may send to the subject, message.receive = you may receive from them)
-    #[command(subcommand)]
-    Access(AccessCmd),
     /// MCP transport relay (user side): open a local socket to a peer's MCP server
     #[command(subcommand)]
     Mcp(McpCmd),
-    /// Store stdin/FILE as a blob; prints the BlobTicket
-    Put(PutArgs),
     /// Publish FILE to the edge's durable files store; prints its URL
     /// (the free tier is `idfon put`, a connected-only BlobTicket)
     Publish(PublishArgs),
-    /// Fetch a ticket to stdout or --out FILE (blob tickets fetch bytes,
-    /// iroh-live: tickets capture live audio)
-    Get(GetArgs),
     /// Loopback HTTP gateway for `idfon://` resources
     #[command(subcommand)]
     Gateway(GatewayCmd),
@@ -156,6 +172,13 @@ enum Command {
     /// Print the public edge URL for a resource (`<ref>/<path>`)
     #[command(subcommand)]
     Web(WebCmd),
+    /// Call any daemon method with raw JSON params (`rpc peer.list`)
+    Rpc {
+        /// Method name, e.g. peer.list (see docs/protocol.md)
+        method: String,
+        /// JSON params; `-` reads stdin; default `{}`
+        params: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -216,9 +239,10 @@ enum IdentityCmd {
 enum PeerCmd {
     /// List peers
     List,
-    /// Add a peer
+    /// Add a contact: a .vcf card, an idfon://add/ link, an MCP ticket, or REF with --endpoint-id
     Add {
-        #[arg(value_name = "REF")]
+        /// carol.vcf | idfon://add/... | MCP ticket JSON | a peer id with --endpoint-id/--endpoint-addr
+        #[arg(value_name = "INPUT")]
         peer_ref: Option<String>,
         /// Stable account/virtual ID; defaults to REF for legacy direct peers
         #[arg(long = "account-id")]
@@ -341,47 +365,43 @@ enum PeerDeviceCmd {
 
 #[derive(clap::Args)]
 struct SendArgs {
-    /// Dial target. Present = 1:1 session-scoped stream / peer-directed push;
-    /// absent = broadcast publish (only valid with --stream)
+    /// Who to send to: a peer name, alias or id
     #[arg(value_name = "PEER")]
     peer: Option<String>,
-    /// Text to send (chat path; requires PEER; pass --idempotency-key to
-    /// dedupe deliberate resends)
+    /// The message text (or use --text)
+    #[arg(value_name = "MESSAGE", conflicts_with = "text")]
+    message: Option<String>,
+    /// The message text
     #[arg(long)]
     text: Option<String>,
-    /// Send FILE (or stdin) as a signaled blob transfer (requires PEER); prints the BlobTicket on delivery
+    /// Send FILE (or stdin when FILE is omitted) instead of text; waits for delivery
     #[arg(long, value_name = "FILE", num_args = 0..=1, default_missing_value = "-")]
     file: Option<String>,
-    /// Stream FILE (or stdin) as live audio: with PEER a 1:1 session (blocks
-    /// until they hang up), without PEER a broadcast printing the live ticket
+    /// After sending text, wait for the peer's reply and print it
     #[arg(long)]
+    wait: bool,
+    /// How long --wait waits (default 60s)
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "60s")]
+    timeout: Duration,
+    /// Legacy: use `idfon live publish` / `idfon call`
+    #[arg(long, hide = true)]
     stream: bool,
-    /// Stream mode only (broadcast only): publish video with an adaptive
-    /// rendition ladder instead of audio
-    #[arg(long, conflicts_with_all = ["text", "loop_playback"])]
+    #[arg(long, hide = true, conflicts_with_all = ["text", "loop_playback"])]
     video: bool,
-    /// Stream mode only: list running live publishers
-    #[arg(long, conflicts_with_all = ["peer", "text", "file", "stop", "name", "loop_playback"])]
+    #[arg(long, hide = true, conflicts_with_all = ["peer", "text", "file", "stop", "name", "loop_playback"])]
     list: bool,
-    /// Stream mode only: gracefully stop a live publisher by id
-    #[arg(long, conflicts_with_all = ["peer", "text", "file", "list", "name", "loop_playback"])]
+    #[arg(long, hide = true, conflicts_with_all = ["peer", "text", "file", "list", "name", "loop_playback"])]
     stop: Option<String>,
-    /// Stream mode only: give up if the peer never hangs up (seconds)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     seconds: Option<u64>,
-    /// Stream mode only: repeat the source indefinitely (broadcast only)
-    #[arg(long = "loop")]
+    #[arg(long = "loop", hide = true)]
     loop_playback: bool,
-    /// Stream mode only: forbid relayed connections
-    #[arg(long = "no-relay")]
+    #[arg(long = "no-relay", hide = true)]
     no_relay: bool,
-    /// Stream mode only: stable broadcast name
-    #[arg(long)]
+    #[arg(long, hide = true)]
     name: Option<String>,
-    /// Thread into a room: sets the signed envelope's `conversation` field.
-    /// This is an ordinary `message.send` param, not a CLI-only concept, so
-    /// every frontend can set it.
-    #[arg(long)]
+    /// Thread into a room (prefer `idfon room send`)
+    #[arg(long, hide = true)]
     conversation: Option<String>,
     #[arg(long = "idempotency-key")]
     idempotency_key: Option<String>,
@@ -402,34 +422,126 @@ struct SendArgs {
     /// Optional per-turn caller context (unsigned, untrusted data): the active
     /// caller-side state the frontend applied, e.g. the speech pipeline.
     /// Peer text only.
-    #[arg(long, conflicts_with_all = ["file", "stream"])]
+    #[arg(long, hide = true, conflicts_with_all = ["file", "stream"])]
     context: Option<String>,
 }
 
 #[derive(clap::Args)]
 struct RecvArgs {
-    /// Receive a 1:1 live stream instead of a signaled data transfer
-    #[arg(long)]
-    stream: bool,
+    /// Only files from this peer (name, alias or id)
     #[arg(long)]
     from: Option<String>,
-    #[arg(long)]
+    /// Save to FILE (default: stdout)
+    #[arg(long, short = 'o')]
     out: Option<String>,
-    #[arg(long = "timeout-ms")]
+    /// Take a file that already arrived within this window (default 2m)
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "2m")]
+    since: Duration,
+    /// Give up waiting after this long (default 60s)
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait)]
+    timeout: Option<Duration>,
+    #[arg(long = "timeout-ms", hide = true)]
     timeout_ms: Option<u64>,
-    /// Stream mode only: capture window (seconds)
-    #[arg(long)]
+    /// Legacy: use `idfon answer`
+    #[arg(long, hide = true)]
+    stream: bool,
+    #[arg(long, hide = true)]
     seconds: Option<u64>,
-    /// Stream mode only: give up if no one calls within this many seconds
-    #[arg(long)]
+    #[arg(long, hide = true)]
     wait: Option<u64>,
-    /// Stream mode only: record encoded video (Annex B .h264) instead of audio
+    #[arg(long, hide = true)]
+    video: bool,
+    #[arg(long, hide = true)]
+    quality: Option<String>,
+    #[arg(long = "no-relay", hide = true)]
+    no_relay: bool,
+}
+
+#[derive(clap::Args)]
+struct InboxArgs {
+    /// Only messages from this peer
+    #[arg(long)]
+    from: Option<String>,
+    /// Keep printing new messages as they arrive
+    #[arg(long, short = 'f')]
+    follow: bool,
+    /// Show at most N recent messages
+    #[arg(long, short = 'n', default_value_t = 20)]
+    limit: usize,
+}
+
+#[derive(Subcommand)]
+enum LiveCmd {
+    /// Broadcast an audio FILE (.wav); prints the live ticket and keeps running
+    Publish {
+        file: String,
+        /// Repeat the file forever
+        #[arg(long = "loop")]
+        loop_playback: bool,
+        /// Publish video (adaptive renditions) instead of audio
+        #[arg(long)]
+        video: bool,
+        /// Stable broadcast name
+        #[arg(long)]
+        name: Option<String>,
+        /// Forbid relayed connections
+        #[arg(long = "no-relay")]
+        no_relay: bool,
+    },
+    /// List running broadcasts
+    List,
+    /// Stop a broadcast by id (see `live list`)
+    Stop { id: String },
+    /// Record a live ticket to FILE (default: stdout)
+    Watch {
+        ticket: String,
+        #[arg(long, short = 'o')]
+        out: Option<String>,
+        /// Stop after this long (default 15s)
+        #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait)]
+        duration: Option<Duration>,
+        #[arg(long)]
+        video: bool,
+        /// Video rendition: low, mid, high, highest
+        #[arg(long)]
+        quality: Option<String>,
+        #[arg(long = "no-relay")]
+        no_relay: bool,
+    },
+}
+
+#[derive(clap::Args)]
+struct CallArgs {
+    /// Who to call
+    peer: String,
+    /// Audio file to stream (.wav; default: stdin)
+    #[arg(long)]
+    file: Option<String>,
+    /// Hang up after this long
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait)]
+    duration: Option<Duration>,
+    #[arg(long = "no-relay")]
+    no_relay: bool,
+}
+
+#[derive(clap::Args)]
+struct AnswerArgs {
+    /// Only answer this peer
+    #[arg(long)]
+    from: Option<String>,
+    /// Record the call to FILE (default: stdout)
+    #[arg(long, short = 'o')]
+    out: Option<String>,
+    /// Give up if nobody calls within this long
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait)]
+    timeout: Option<Duration>,
+    /// Stop recording after this long
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait)]
+    duration: Option<Duration>,
     #[arg(long)]
     video: bool,
-    /// Stream mode only: rendition quality (low, mid, high, highest)
     #[arg(long)]
     quality: Option<String>,
-    /// Stream mode only: forbid relayed connections
     #[arg(long = "no-relay")]
     no_relay: bool,
 }
@@ -446,11 +558,14 @@ struct EventsArgs {
 
 #[derive(Subcommand)]
 enum RoomCmd {
-    /// Create a room; `--id` defaults to a random 128-bit topic id
+    /// Create a room: `room create team --member bob`
     Create {
-        #[arg(long)]
+        /// Room name
+        #[arg(value_name = "NAME")]
+        room_name: Option<String>,
+        #[arg(long, hide = true)]
         id: Option<String>,
-        #[arg(long)]
+        #[arg(long, hide = true)]
         name: Option<String>,
         /// Peer ref (id, name, or alias) to add as a member; repeatable
         #[arg(long = "member")]
@@ -462,12 +577,15 @@ enum RoomCmd {
     },
     /// List rooms
     List,
-    /// Send text to every member of a room (fan-out on the caller's daemon)
+    /// Send a message to every member: `room send team "hi"`
     Send {
+        /// Room name or id
         #[arg(value_name = "ROOM")]
         room: String,
+        #[arg(value_name = "MESSAGE", conflicts_with = "text", required_unless_present = "text")]
+        message: Option<String>,
         #[arg(long)]
-        text: String,
+        text: Option<String>,
         #[arg(long = "idempotency-key")]
         idempotency_key: Option<String>,
         /// Holder-issued capability ticket token (see `idfon access ticket`).
@@ -526,6 +644,7 @@ enum RoomCallCmd {
 struct WaitArgs {
     #[arg(long = "type")]
     event_type: Option<String>,
+    /// Only events after this cursor (default: only events newer than now)
     #[arg(long)]
     after: Option<String>,
     #[arg(long = "timeout-ms")]
@@ -552,22 +671,30 @@ enum OperationCmd {
 
 #[derive(Subcommand)]
 enum AccessCmd {
-    /// Check whether a capability is granted
+    /// Check a capability for a peer: `access check bob message.send`
     Check {
-        #[arg(long)]
-        subject: Option<String>,
-        #[arg(long)]
+        /// Peer name, alias or id
+        peer: Option<String>,
+        /// Capability (default message.send: may you message them?)
         capability: Option<String>,
+        #[arg(long, hide = true)]
+        subject: Option<String>,
+        #[arg(long = "capability", hide = true)]
+        capability_flag: Option<String>,
     },
-    /// Allow yourself to exchange messages with a peer (stored on your
-    /// daemon; gates your own send/receive, not the peer's)
-    Allow {
-        #[arg(long)]
-        subject: String,
-        #[arg(long)]
-        capability: String,
+    /// Grant yourself a capability for a peer (default: send to and receive from them)
+    #[command(alias = "allow")]
+    Grant {
+        /// Peer name, alias or id
+        peer: Option<String>,
+        /// Capabilities (default: message.send message.receive)
+        capabilities: Vec<String>,
+        #[arg(long, hide = true)]
+        subject: Option<String>,
+        #[arg(long = "capability", hide = true)]
+        capability_flag: Option<String>,
     },
-    /// Mint a capability ticket for a peer
+    /// Make a ticket that lets PEER message you: `access ticket bob --expires 30d`
     Ticket(TicketArgs),
 }
 
@@ -591,14 +718,19 @@ enum McpCmd {
 
 #[derive(clap::Args)]
 struct TicketArgs {
-    #[arg(long)]
-    subject: String,
+    /// Who the ticket is for: peer name, alias or id
+    peer: Option<String>,
+    #[arg(long, hide = true)]
+    subject: Option<String>,
+    /// Limit the ticket to one room
     #[arg(long)]
     conversation: Option<String>,
-    #[arg(long)]
+    /// What it allows (default message.receive: the holder may message you)
+    #[arg(long, alias = "cap")]
     capability: Option<String>,
-    #[arg(long = "expires-at")]
-    expires_at: Option<String>,
+    /// Expiry: 2026-12-31, an RFC 3339 time, or a duration like 30d
+    #[arg(long, alias = "expires-at", value_parser = ux::parse_expiry)]
+    expires: Option<String>,
     /// Bound the ticket to a resource path prefix (e.g. /fs/public)
     #[arg(long = "path-scope")]
     path_scope: Option<String>,
@@ -606,8 +738,10 @@ struct TicketArgs {
 
 #[derive(clap::Args)]
 struct PutArgs {
-    /// Read from FILE instead of stdin
-    #[arg(long)]
+    /// File to store (default: stdin)
+    #[arg(value_name = "FILE", conflicts_with = "file")]
+    path: Option<String>,
+    #[arg(long, hide = true)]
     file: Option<String>,
     #[arg(long = "resource-id")]
     resource_id: Option<String>,
@@ -667,7 +801,8 @@ fn parse_duration(value: &str) -> Result<u64, String> {
 #[derive(clap::Args)]
 struct GetArgs {
     ticket: String,
-    #[arg(long)]
+    /// Save to FILE (default: stdout)
+    #[arg(long, short = 'o')]
     out: Option<String>,
     /// Live tickets only: cap the capture window (seconds)
     #[arg(long)]
@@ -740,7 +875,7 @@ fn run() -> io::Result<()> {
         }
         Command::Put(args) => cmd_put(
             socket,
-            args.file.as_ref(),
+            args.path.or(args.file).as_ref(),
             args.resource_id,
             args.mime.as_ref(),
             json,
@@ -829,7 +964,10 @@ fn run() -> io::Result<()> {
                     socket,
                     args.out.as_ref(),
                     args.from.as_deref(),
-                    args.timeout_ms,
+                    args.since,
+                    args.timeout
+                        .or(args.timeout_ms.map(Duration::from_millis))
+                        .unwrap_or(Duration::from_secs(60)),
                     identity,
                 )
             }
@@ -843,8 +981,11 @@ fn run() -> io::Result<()> {
             identity,
         ),
         Command::Wait(args) => {
+            // Default: only events newer than now (an old match would return
+            // at once and look like a fresh one).
+            let after = args.after.or_else(|| ux::latest_cursor(socket, identity));
             let params = rpc::EventWait {
-                after: args.after,
+                after,
                 event_type: args.event_type,
                 timeout_ms: args.timeout_ms,
                 ..Default::default()
@@ -890,10 +1031,23 @@ fn run() -> io::Result<()> {
             json,
         ),
         Command::Doctor => cmd_doctor(socket, identity, json, cli.stdin_json),
-        Command::Identity(IdentityCmd::List) => finish(
-            call(socket, &rpc::IdentityList {}, identity, cli.stdin_json)?,
-            json,
-        ),
+        Command::Identity(IdentityCmd::List) => {
+            let response = call(socket, &rpc::IdentityList {}, identity, cli.stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            for item in ux::ok_result(response)?["identities"].as_array().into_iter().flatten() {
+                let name = item["name"].as_str().unwrap_or("?");
+                let id = item["id"].as_str().unwrap_or("?");
+                let active = if item["active"] == true { "* " } else { "  " };
+                if name == id {
+                    println!("{active}{name}");
+                } else {
+                    println!("{active}{name}  (id {id})");
+                }
+            }
+            Ok(())
+        }
         Command::Identity(IdentityCmd::Use { name }) => finish(
             call(socket, &rpc::IdentityUse { name }, identity, cli.stdin_json)?,
             json,
@@ -906,10 +1060,24 @@ fn run() -> io::Result<()> {
             call(socket, &rpc::IdentityDelete { name }, identity, cli.stdin_json)?,
             json,
         ),
-        Command::Peer(PeerCmd::List) => finish(
-            call(socket, &rpc::PeerList {}, identity, cli.stdin_json)?,
-            json,
-        ),
+        Command::Peer(PeerCmd::List) => {
+            let response = call(socket, &rpc::PeerList {}, identity, cli.stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let peers = ux::ok_result(response)?["peers"].as_array().cloned().unwrap_or_default();
+            if peers.is_empty() {
+                eprintln!("no contacts yet (add one with `idfon peer add carol.vcf`)");
+            }
+            for peer in peers {
+                println!(
+                    "{}  {}",
+                    peer["name"].as_str().unwrap_or("?"),
+                    peer["id"].as_str().unwrap_or("?").chars().take(12).collect::<String>()
+                );
+            }
+            Ok(())
+        }
         Command::Peer(PeerCmd::Add {
             peer_ref,
             account_id,
@@ -918,10 +1086,32 @@ fn run() -> io::Result<()> {
             endpoint_addr,
             call_mode,
             mcp_ticket,
-        }) => finish(
-            call(
-                socket,
-                &rpc::PeerAdd {
+        }) => {
+            // One `add` for every way a contact travels: a .vcf card, an
+            // idfon://add link, an MCP contact ticket, or explicit fields.
+            let input = peer_ref.as_deref().unwrap_or_default();
+            let is_card = input == "-"
+                || input.to_ascii_lowercase().ends_with(".vcf")
+                || std::fs::read_to_string(input).is_ok_and(|text| text.contains("BEGIN:VCARD"));
+            if is_card {
+                return cmd_contact_import(socket, identity, Some(input), json);
+            }
+            let params = if input.starts_with("idfon://add/") {
+                let ticket =
+                    idfon_protocol::vcf::contact_ticket_from_link(input).map_err(io::Error::other)?;
+                rpc::PeerAdd {
+                    name: name.or_else(|| ticket.label.clone()),
+                    contact_ticket: Some(ticket),
+                    ..Default::default()
+                }
+            } else if input.trim_start().starts_with('{') && mcp_ticket.is_none() {
+                rpc::PeerAdd {
+                    name,
+                    mcp_ticket: Some(input.to_owned()),
+                    ..Default::default()
+                }
+            } else {
+                rpc::PeerAdd {
                     id: account_id.or_else(|| peer_ref.clone()),
                     peer: peer_ref,
                     name,
@@ -931,12 +1121,10 @@ fn run() -> io::Result<()> {
                     call_mode,
                     mcp_ticket,
                     contact_ticket: None,
-                },
-                identity,
-                cli.stdin_json,
-            )?,
-            json,
-        ),
+                }
+            };
+            print_added(call(socket, &params, identity, cli.stdin_json)?, json)
+        }
         Command::Peer(PeerCmd::Update {
             peer_ref,
             name,
@@ -1034,14 +1222,25 @@ fn run() -> io::Result<()> {
             json,
         ),
         Command::Room(command) => match command {
-            RoomCmd::Create { id, name, members, keep_call_open } => {
+            RoomCmd::Create { room_name, id, name, members, keep_call_open } => {
                 let params = rpc::RoomCreate {
                     id,
-                    name,
+                    name: room_name.or(name),
                     members,
                     call_auto_close: keep_call_open.then_some(false),
                 };
-                finish(call(socket, &params, identity, cli.stdin_json)?, json)
+                let response = call(socket, &params, identity, cli.stdin_json)?;
+                if json || !response.ok {
+                    return finish(response, json);
+                }
+                let room = &ux::ok_result(response)?["room"];
+                let others = room["members"].as_array().map_or(0, Vec::len);
+                println!(
+                    "created room {} (you + {others} other{})",
+                    room["name"].as_str().or(room["id"].as_str()).unwrap_or("?"),
+                    if others == 1 { "" } else { "s" }
+                );
+                Ok(())
             }
             RoomCmd::List => finish(
                 call(socket, &rpc::RoomList {}, identity, cli.stdin_json)?,
@@ -1049,6 +1248,7 @@ fn run() -> io::Result<()> {
             ),
             RoomCmd::Send {
                 room,
+                message,
                 text,
                 idempotency_key,
                 capability_ticket,
@@ -1066,12 +1266,13 @@ fn run() -> io::Result<()> {
                             .as_nanos()
                     )
                 });
-                finish(
-                    call(
+                {
+                let room_ref = room.clone();
+                let response = call(
                         socket,
                         &rpc::RoomSend {
-                            room,
-                            text,
+                            room: ux::resolve_room(socket, identity, &room)?,
+                            text: message.or(text).unwrap_or_default(),
                             idempotency_key: key,
                             capability_ticket,
                             retries,
@@ -1079,9 +1280,19 @@ fn run() -> io::Result<()> {
                         },
                         identity,
                         cli.stdin_json,
-                    )?,
-                    json,
-                )
+                    )?;
+                if json || !response.ok {
+                    return finish(response, json);
+                }
+                let result = ux::ok_result(response)?;
+                let failures = result["failures"].as_array().map_or(0, Vec::len);
+                println!(
+                    "sent to {room_ref} ({} delivered{})",
+                    result["operation_ids"].as_array().map_or(0, Vec::len),
+                    if failures > 0 { format!(", {failures} failed") } else { String::new() }
+                );
+                Ok(())
+                }
             }
             RoomCmd::Leave { room } => finish(
                 call(socket, &rpc::RoomLeave { room }, identity, cli.stdin_json)?,
@@ -1245,35 +1456,70 @@ fn run() -> io::Result<()> {
             json,
         ),
         Command::Access(AccessCmd::Check {
-            subject,
+            peer,
             capability,
-        }) => finish(
-            call(
+            subject,
+            capability_flag,
+        }) => {
+            let reference = peer
+                .or(subject)
+                .ok_or_else(|| io::Error::other("usage: idfon access check PEER [CAPABILITY]"))?;
+            let capability = capability
+                .or(capability_flag)
+                .unwrap_or_else(|| "message.send".into());
+            let response = call(
                 socket,
                 &rpc::AccessCheck {
-                    peer: subject,
-                    capability,
+                    peer: Some(ux::peer_key(socket, identity, &reference)?),
+                    capability: Some(capability.clone()),
                 },
                 identity,
                 cli.stdin_json,
-            )?,
-            json,
-        ),
-        Command::Access(AccessCmd::Allow {
+            )?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let allowed = ux::ok_result(response)?["allowed"] == true;
+            println!(
+                "{}: {capability} is {}",
+                reference,
+                if allowed { "allowed" } else { "not allowed" }
+            );
+            Ok(())
+        }
+        Command::Access(AccessCmd::Grant {
+            peer,
+            capabilities,
             subject,
-            capability,
-        }) => finish(
-            call(
-                socket,
-                &rpc::AccessGrant {
-                    peer: subject,
-                    capability,
-                },
-                identity,
-                cli.stdin_json,
-            )?,
-            json,
-        ),
+            capability_flag,
+        }) => {
+            let reference = peer
+                .or(subject)
+                .ok_or_else(|| io::Error::other("usage: idfon access grant PEER [CAPABILITY...]"))?;
+            let key = ux::peer_key(socket, identity, &reference)?;
+            let mut capabilities: Vec<String> =
+                capabilities.into_iter().chain(capability_flag).collect();
+            if capabilities.is_empty() {
+                capabilities = vec!["message.send".into(), "message.receive".into()];
+            }
+            for capability in &capabilities {
+                let response = call(
+                    socket,
+                    &rpc::AccessGrant {
+                        peer: key.clone(),
+                        capability: capability.clone(),
+                    },
+                    identity,
+                    cli.stdin_json,
+                )?;
+                if json || !response.ok {
+                    finish(response, json)?;
+                } else {
+                    println!("granted {capability} for {reference}");
+                }
+            }
+            Ok(())
+        }
         Command::Mcp(McpCmd::Listen { to }) => finish(
             call(socket, &rpc::McpListen { peer: to }, identity, cli.stdin_json)?,
             json,
@@ -1283,31 +1529,171 @@ fn run() -> io::Result<()> {
             json,
         ),
         Command::Access(AccessCmd::Ticket(args)) => {
+            let reference = args
+                .peer
+                .or(args.subject)
+                .ok_or_else(|| io::Error::other("usage: idfon access ticket PEER [--expires 30d]"))?;
             let params = rpc::AccessTicket {
-                peer: args.subject,
+                peer: ux::peer_key(socket, identity, &reference)?,
                 capabilities: vec![args
                     .capability
                     .clone()
                     .unwrap_or_else(|| "message.receive".into())],
-                expires_at: args.expires_at,
+                expires_at: args.expires,
                 conversation: args.conversation,
                 path_scope: args.path_scope,
             };
             let response = call(socket, &params, identity, cli.stdin_json)?;
-            if !json {
-                let ticket = match &response.body {
-                    ResponseBody::Success { result, .. } => {
-                        result.get("ticket").cloned().unwrap_or_default()
-                    }
-                    _ => Value::Null,
-                };
-                println!(
-                    "{}",
-                    serde_json::to_string(&ticket).map_err(io::Error::other)?
-                );
-                return Ok(());
+            if json || !response.ok {
+                return finish(response, json);
             }
-            finish(response, json)
+            match &ux::ok_result(response)?["ticket"] {
+                Value::String(ticket) => println!("{ticket}"),
+                other => println!("{other}"),
+            }
+            Ok(())
+        }
+        Command::Inbox(args) => {
+            ux::cmd_inbox(socket, identity, args.from.as_deref(), args.limit, args.follow, json)
+        }
+        Command::Live(command) => match command {
+            LiveCmd::Publish {
+                file,
+                loop_playback,
+                video,
+                name,
+                no_relay,
+            } => {
+                let params = rpc::LivePublish {
+                    file: ux::daemon_path(&file)?,
+                    loop_playback,
+                    video,
+                    relay: !no_relay,
+                    name,
+                };
+                let response = call_plain(socket, &params, identity)?;
+                if json || !response.ok {
+                    return finish(response, json);
+                }
+                let result = ux::ok_result(response)?;
+                println!("{}", result["ticket"].as_str().unwrap_or_default());
+                eprintln!(
+                    "broadcasting as {} (stop with `idfon live stop {}`)",
+                    result["id"].as_str().unwrap_or("?"),
+                    result["id"].as_str().unwrap_or("ID")
+                );
+                Ok(())
+            }
+            LiveCmd::List => {
+                let response = call_plain(socket, &rpc::LiveList {}, identity)?;
+                if json || !response.ok {
+                    return finish(response, json);
+                }
+                let result = ux::ok_result(response)?;
+                let ids = result["ids"].as_array().cloned().unwrap_or_default();
+                if ids.is_empty() {
+                    eprintln!("no broadcasts running");
+                }
+                for id in ids {
+                    println!("{}", id.as_str().unwrap_or("?"));
+                }
+                Ok(())
+            }
+            LiveCmd::Stop { id } => {
+                let response = call_plain(socket, &rpc::LiveStop { id: id.clone() }, identity)?;
+                if json || !response.ok {
+                    return finish(response, json);
+                }
+                println!("stopped {id}");
+                Ok(())
+            }
+            LiveCmd::Watch {
+                ticket,
+                out,
+                duration,
+                video,
+                quality,
+                no_relay,
+            } => cmd_listen(
+                socket,
+                &ticket,
+                out.as_ref(),
+                duration.map(|d| d.as_secs()),
+                video,
+                quality.as_deref(),
+                !no_relay,
+                json,
+                identity,
+            ),
+        },
+        Command::Call(args) => {
+            let file = match args.file.as_deref() {
+                Some(path) if path != "-" => ux::daemon_path(path)?,
+                other => resolve_stream_file(other.map(str::to_owned).as_ref())?,
+            };
+            let params = rpc::LiveDial {
+                peer: args.peer.clone(),
+                file,
+                video: false,
+                relay: !args.no_relay,
+                seconds: args.duration.map(|d| d.as_secs()),
+                delivery: Some(DeliveryPolicy::default()),
+            };
+            let response = call_plain(socket, &params, identity)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            println!(
+                "call with {} ended after {} ms",
+                args.peer,
+                result_str(&response, "held_ms")
+            );
+            Ok(())
+        }
+        Command::Answer(args) => cmd_answer(
+            socket,
+            args.out.as_ref(),
+            args.duration.map(|d| d.as_secs()),
+            args.timeout.map(|d| d.as_secs()),
+            args.from.as_deref(),
+            args.video,
+            args.quality.as_deref(),
+            !args.no_relay,
+            json,
+            identity,
+        ),
+        Command::Rpc { method, params } => {
+            let params: Value = match params.as_deref() {
+                None => json!({}),
+                Some("-") => serde_json::from_reader(io::stdin()).map_err(io::Error::other)?,
+                Some(text) => serde_json::from_str(text)
+                    .map_err(|error| io::Error::other(format!("params must be JSON: {error}")))?,
+            };
+            let mut request = Request {
+                version: idfon_protocol::PROTOCOL_VERSION,
+                id: "cli-rpc".into(),
+                method,
+                params,
+            };
+            if let (Some(identity), Some(object)) = (identity, request.params.as_object_mut()) {
+                object
+                    .entry("identity")
+                    .or_insert(Value::String(identity.into()));
+            }
+            let mut client = connect_or_start_daemon(socket)?;
+            let response = read_json(
+                &mut client,
+                &encode_json(&request).map_err(io::Error::other)?,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&response).map_err(io::Error::other)?
+            );
+            if response.ok {
+                Ok(())
+            } else {
+                Err(io::Error::other("request failed"))
+            }
         }
     }
 }
@@ -1389,8 +1775,21 @@ fn cmd_contact_import(
             ..Default::default()
         };
         let response = call(socket, &params, identity, false)?;
-        finish(response, json)?;
+        print_added(response, json)?;
     }
+    Ok(())
+}
+
+/// `added NAME`, or the envelope with `--json`, or the error.
+fn print_added(response: Response, json: bool) -> io::Result<()> {
+    if json || !response.ok {
+        return finish(response, json);
+    }
+    let result = ux::ok_result(response)?;
+    println!(
+        "added {}",
+        result["peer"]["name"].as_str().unwrap_or("contact")
+    );
     Ok(())
 }
 
@@ -1768,7 +2167,10 @@ fn print_human(response: &Response) {
                         identity
                     );
                 } else {
-                    println!("{}", result);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(result).unwrap_or_default()
+                    );
                 }
             }
         }
@@ -2094,9 +2496,24 @@ fn send_payload(
                     .as_nanos()
             )
         });
+        let Some(text) = args.message.clone().or_else(|| args.text.clone()) else {
+            return Err(io::Error::other(
+                "nothing to send: give a MESSAGE (`idfon send bob \"hi\"`) or --file FILE",
+            ));
+        };
+        // Resolve and take the reply baseline before sending: a fast reply
+        // must not land before the cursor we wait from.
+        let reply_from = if args.wait {
+            Some((
+                ux::resolve_peer(socket, identity, peer)?,
+                ux::latest_cursor(socket, identity),
+            ))
+        } else {
+            None
+        };
         let params = rpc::MessageSend {
             peer: peer.to_owned(),
-            text: args.text.clone(),
+            text: Some(text),
             idempotency_key: key,
             conversation: args.conversation.clone(),
             context: args.context.clone(),
@@ -2108,7 +2525,38 @@ fn send_payload(
                 args.device_class.clone(),
             )),
         };
-        finish(call(socket, &params, identity, stdin_json)?, json)
+        let response = call(socket, &params, identity, stdin_json)?;
+        let Some((target, baseline)) = reply_from else {
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            println!("sent to {peer} ({})", result_str(&response, "operation_id"));
+            return Ok(());
+        };
+        if !response.ok {
+            return finish(response, json);
+        }
+        let reply = ux::wait_message(socket, identity, baseline, args.timeout, |event| {
+            let data = &event["data"];
+            ux::peer_matches(&target, data["peer_id"].as_str().unwrap_or(""))
+                && data["conversation"].is_null()
+                && !data["text"].as_str().unwrap_or("").starts_with("IDFON-")
+        })?;
+        match reply {
+            Some(event) if json => println!("{event}"),
+            Some(event) => println!(
+                "{}: {}",
+                target.name,
+                event["data"]["text"].as_str().unwrap_or_default()
+            ),
+            None => {
+                return Err(io::Error::other(format!(
+                    "sent, but no reply from {peer} within {}s",
+                    args.timeout.as_secs()
+                )))
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2167,113 +2615,76 @@ fn cmd_send_data(
             "{{\"blob_ticket\":\"{ticket}\",\"operation_id\":\"{operation_id}\",\"status\":\"delivered\"}}"
         );
     } else {
-        println!("{ticket}");
+        println!(
+            "sent {} to {peer} ({size} bytes, delivered)",
+            file.map_or("stdin", String::as_str)
+        );
     }
     Ok(())
 }
 
-/// Parses a IDFON-DATA/1 envelope into (blob ticket, declared size).
-fn parse_data_envelope(text: &str) -> Option<(String, Option<usize>)> {
-    let mut ticket = None;
-    let mut size = None;
-    for line in text.strip_prefix("IDFON-DATA/1\n")?.lines() {
-        let (key, value) = line.split_once('=')?;
-        match key {
-            "ticket" => ticket = Some(value.to_string()),
-            "size" => size = value.parse().ok(),
-            _ => {}
-        }
-    }
-    Some((ticket?, size))
-}
-
-/// `idfon recv`: waits for a IDFON-DATA/1 message through the daemon's event
-/// stream, then streams the referenced blob to stdout (or --out FILE).
+/// `idfon recv`: saves a file a peer sent (an `IDFON-DATA/1` message). Takes
+/// the newest one that arrived within `since`, else waits for the next.
 fn cmd_recv(
     socket: &str,
     out: Option<&String>,
     from: Option<&str>,
-    timeout_ms: Option<u64>,
+    since: Duration,
+    timeout: Duration,
     identity: Option<&str>,
 ) -> io::Result<()> {
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms.unwrap_or(60_000));
-    // Baseline: only wait for messages that arrive after recv started. No
-    // retained events means no `after` filter (a "cur_0" sentinel would be
-    // rejected as CursorTooOld — it sorts below the first cursor).
-    let mut cursor: Option<String> = None;
-    let baseline = rpc::EventList {
-        event_type: Some("message.received".into()),
-        ..Default::default()
+    let from = from
+        .map(|reference| ux::resolve_peer(socket, identity, reference))
+        .transpose()?;
+    let is_file = |event: &Value| {
+        let data = &event["data"];
+        from.as_ref()
+            .is_none_or(|peer| ux::peer_matches(peer, data["peer_id"].as_str().unwrap_or("")))
+            && ux::data_envelope(data["text"].as_str().unwrap_or("")).is_some()
     };
-    if let Ok(response) = call_plain(socket, &baseline, identity) {
-        if let ResponseBody::Success { result, .. } = &response.body {
-            cursor = result
-                .get("events")
-                .and_then(Value::as_array)
-                .and_then(|events| events.last())
-                .and_then(|event| event.get("cursor"))
-                .and_then(Value::as_str)
-                .map(str::to_string);
+    let cutoff = ux::unix_now().saturating_sub(since.as_secs());
+    let timestamp = |event: &Value| match &event["timestamp"] {
+        Value::String(text) => text.parse().unwrap_or(0),
+        other => other.as_u64().unwrap_or(0),
+    };
+    let recent = ux::message_events(socket, identity, None)?
+        .into_iter()
+        .rev()
+        .find(|event| is_file(event) && timestamp(event) >= cutoff);
+    let event = match recent {
+        Some(event) => event,
+        None => {
+            let after = ux::latest_cursor(socket, identity);
+            eprintln!("waiting up to {}s for a file...", timeout.as_secs());
+            ux::wait_message(socket, identity, after, timeout, is_file)?.ok_or_else(|| {
+                io::Error::other(format!(
+                    "no file arrived within {}s{}",
+                    timeout.as_secs(),
+                    from.as_ref()
+                        .map(|peer| format!(" from {}", peer.name))
+                        .unwrap_or_default()
+                ))
+            })?
+        }
+    };
+    let data = &event["data"];
+    let (ticket, declared_size) =
+        ux::data_envelope(data["text"].as_str().unwrap_or("")).expect("filtered to files");
+    let written = fetch_to(socket, &ticket, out, identity)?;
+    if let Some(size) = declared_size {
+        if written != size {
+            return Err(io::Error::other(format!(
+                "received {written} bytes but the sender declared {size}"
+            )));
         }
     }
-    loop {
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if remaining.is_zero() {
-            return Err(io::Error::other("recv timed out: no data message arrived"));
-        }
-        let wait_ms = remaining.as_millis().min(30_000) as u64;
-        let params = rpc::EventWait {
-            event_type: Some("message.received".into()),
-            after: cursor.clone(),
-            timeout_ms: Some(wait_ms),
-            peer: None,
-        };
-        let response = call_plain(socket, &params, identity)?;
-        if !response.ok {
-            return Err(io::Error::other(request_error(&response)));
-        }
-        let events = match &response.body {
-            ResponseBody::Success { result, .. } => result
-                .get("events")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-            _ => Vec::new(),
-        };
-        if let Some(next) = events
-            .last()
-            .and_then(|event| event.get("cursor"))
-            .and_then(Value::as_str)
-        {
-            cursor = Some(next.to_string());
-        }
-        for event in &events {
-            let data = &event["data"];
-            if let Some(sender) = from {
-                if data.get("peer_id").and_then(Value::as_str) != Some(sender) {
-                    continue;
-                }
-            }
-            let text = data.get("text").and_then(Value::as_str).unwrap_or("");
-            let Some((ticket, declared_size)) = parse_data_envelope(text) else {
-                continue;
-            };
-            let written = fetch_to(socket, &ticket, out, identity)?;
-            if let Some(size) = declared_size {
-                if written != size {
-                    return Err(io::Error::other(format!(
-                        "received {written} bytes but envelope declared {size}"
-                    )));
-                }
-            }
-            eprintln!(
-                "recv: wrote {written} bytes from {}",
-                data.get("peer_id").and_then(Value::as_str).unwrap_or("?")
-            );
-            return Ok(());
-        }
-    }
+    let peers = ux::all_peers(socket, identity);
+    eprintln!(
+        "saved {written} bytes from {}{}",
+        ux::sender_name(&peers, data["peer_id"].as_str().unwrap_or("")),
+        out.map(|path| format!(" to {path}")).unwrap_or_default()
+    );
+    Ok(())
 }
 
 /// `idfon stream`: publishes FILE (or stdin, spooled to a temp file) as a
@@ -2311,7 +2722,7 @@ fn resolve_stream_file(file: Option<&String>) -> io::Result<String> {
                 .map(str::to_string)
                 .ok_or_else(|| io::Error::other("temp path not utf-8"))
         }
-        Some(path) => Ok(path.clone()),
+        Some(path) => ux::daemon_path(path),
     }
 }
 
