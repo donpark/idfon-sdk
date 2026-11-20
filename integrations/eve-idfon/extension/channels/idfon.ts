@@ -4,6 +4,7 @@ import { parseAnswers } from "eve/client";
 import extension from "../extension";
 import { logger } from "../log";
 import { drainEnvelopes } from "../outbox";
+import { bridge as client } from "../bridge";
 
 const log = logger("idfon.agent");
 
@@ -89,37 +90,9 @@ function authFor(
   };
 }
 
-async function bridge(path: string, body: unknown) {
-  const response = await fetch(`${extension.config.bridgeUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-idfon-channel-secret": extension.config.secret,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    throw new Error(`idfon bridge ${path} returned HTTP ${response.status}`);
-  }
-  return response;
-}
-
-async function bridgeJson<T>(path: string, body: unknown): Promise<T> {
-  return (await bridge(path, body)).json() as Promise<T>;
-}
-
-async function bridgeRetry(path: string, body: unknown) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await bridge(path, body);
-    } catch (error) {
-      lastError = error;
-      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
-    }
-  }
-  throw lastError;
-}
+const bridge = client.post;
+const bridgeJson = client.json;
+const bridgeRetry = client.retry;
 
 export default defineChannel({
   turnPolicy: "queue",

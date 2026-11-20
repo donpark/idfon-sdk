@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { emitEnvelope } from "../outbox";
+import { envelopes } from "../envelopes";
 
 // Open an artifact on the user's screen (docs/voice-multimodal.md). Use it to
 // bring a result the user should look at to the front; `point` additionally
@@ -16,10 +17,10 @@ export default defineTool({
     blob_ticket: z.string().optional().describe("Artifact blob ticket, so the app can fetch it."),
   }),
   async execute(input, ctx) {
-    emitEnvelope(ctx.session.id, `IDFON-SHOW/1\n${JSON.stringify({
+    emitEnvelope(ctx.session.id, envelopes.show({
       artifact_id: input.artifact_id,
       blob_ticket: input.blob_ticket ?? null,
-    })}`);
+    }));
     return { shown: true };
   },
 });

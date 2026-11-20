@@ -75,7 +75,7 @@ export default defineAgent({
       ? { toolCalls: [{ name: "approved_action", input: { value: "m4" } }] }
       : `reply from eve: ${lastUserMessage}`;
   }),
-  modelContextWindowTokens: 4096,
+  modelContextWindowTokens: 32_768,
 });
 EOF
 cat > "$app/agent/tools/approved_action.ts" <<'EOF'
@@ -104,7 +104,7 @@ cat > "$app/package.json" <<EOF
   "private": true,
   "type": "module",
   "dependencies": {
-    "eve": "0.68.0",
+    "eve": "1.0.2",
     "just-bash": "^3.4.2",
     "eve-idfon": "file:$integration"
   }

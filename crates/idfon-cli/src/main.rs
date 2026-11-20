@@ -930,9 +930,9 @@ fn run() -> io::Result<()> {
             }
         }
         Command::Get(args) => {
-            // Tickets are self-describing: live tickets carry an "iroh-live:"
+            // Tickets are self-describing: live tickets carry an "ilv1:" (or legacy "iroh-live:")
             // scheme prefix, blob tickets start with "blob".
-            if args.ticket.starts_with("iroh-live:") {
+            if args.ticket.starts_with("ilv1:") || args.ticket.starts_with("iroh-live:") {
                 cmd_listen(
                     socket,
                     &args.ticket,
@@ -2451,11 +2451,12 @@ fn put_data(
 
 fn result_str(response: &Response, key: &str) -> String {
     match &response.body {
-        ResponseBody::Success { result, .. } => result
-            .get(key)
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        ResponseBody::Success { result, .. } => match result.get(key) {
+            Some(Value::String(text)) => text.clone(),
+            Some(Value::Number(number)) => number.to_string(),
+            Some(Value::Bool(flag)) => flag.to_string(),
+            _ => String::new(),
+        },
         _ => String::new(),
     }
 }

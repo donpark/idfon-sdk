@@ -66,7 +66,7 @@ cat > "$app/package.json" <<EOF
   "private": true,
   "type": "module",
   "dependencies": {
-    "eve": "0.68.0",
+    "eve": "1.0.2",
     "just-bash": "^3.4.2",
     "eve-idfon": "file:$integration"
   }

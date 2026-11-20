@@ -33,6 +33,16 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cli="${IDFON_CLI:-$root/target/release/idfon}"
 socket="${IDFON_SOCKET:-/tmp/idfon/idfond.sock}"
 agent="${EVE_AGENT:-llm}"
+# Per-agent serve defaults: `agents/<agent>/serve.env`, KEY=VALUE lines that
+# apply only when the variable is not already set (so the caller still wins).
+# This is what lets an agent run with no scripts/<agent>-serve.sh of its own.
+serve_env="$root/agents/$agent/serve.env"
+if [ -r "$serve_env" ]; then
+  while IFS='=' read -r serve_key serve_value; do
+    case "$serve_key" in ''|\#*) continue ;; esac
+    if [ -z "${!serve_key+x}" ]; then export "$serve_key=$serve_value"; fi
+  done < "$serve_env"
+fi
 # EVE_INSTANCE keys the contact's identity/home/ports. `auto` derives a slug
 # from the contact/model so contacts get stable, readable instance names
 # instead of ad-hoc ones; unset keeps the agent name.
@@ -92,9 +102,18 @@ holder_bin="${EVE_IDFON_BIN:-eve-idfon-voice}"
 # the default uses `-`, not `:-`).
 holder_features="${EVE_IDFON_FEATURES-gpt-live}"
 
-: "${AI_GATEWAY_API_KEY:?AI_GATEWAY_API_KEY must be set}"
-model="${EVE_IDFON_MODEL:-openai/gpt-6-luna}"
-export EVE_IDFON_MODEL="$model"
+# An empty EVE_IDFON_MODEL (e.g. from serve.env) keeps the agent's own default
+# (a mock model, for the test agents). Only an AI Gateway model id
+# (`provider/model`) needs the gateway key.
+model="${EVE_IDFON_MODEL-openai/gpt-6-luna}"
+if [ -n "$model" ]; then
+  export EVE_IDFON_MODEL="$model"
+else
+  unset EVE_IDFON_MODEL
+fi
+case "$model" in
+  */*) : "${AI_GATEWAY_API_KEY:?AI_GATEWAY_API_KEY must be set for model $model}" ;;
+esac
 
 # Fold the agent's own `idfon.json` manifest into the live config, so the
 # holder serves it as a resource (`idfon://<holder>/idfon.json`) and merges its
@@ -108,7 +127,16 @@ fi
 
 mkdir -p "$home"
 key="$home/holder.key"
-if [ ! -s "$key" ]; then printf '%064d' "$((RANDOM * RANDOM))" > "$key"; fi
+if [ ! -s "$key" ]; then
+  # 32 random bytes as hex (the holder's key format). Never $RANDOM: that is
+  # ~30 bits, so the identity key would be guessable.
+  (umask 077 && openssl rand -hex 32 > "$key")
+fi
+case "$(cat "$key")" in
+  0000000000000000000000000000000000000000*)
+    echo "warning: $key was generated with a weak RNG (older serve script)." >&2
+    echo "         Delete it to mint a strong key; callers must re-pair afterwards." >&2 ;;
+esac
 
 # Build when the holder is missing or any Rust source it is built from is
 # newer. Existence alone is not enough: a stale binary silently outlives a
@@ -173,6 +201,14 @@ if [ ! -d "$agent_dir/.output" ] || [ "$compiled_model" != "$model" ] || \
   (cd "$agent_dir" && npx --offline eve build >"$home/eve-build.log" 2>&1)
 fi
 export IDFON_BRIDGE_URL="http://127.0.0.1:$bridge_port"
+# Per-instance bridge secret: random, persisted, never the old shared test
+# value (any local process knowing it could drive the agent's bridge).
+bridge_secret_file="$home/bridge-secret"
+if [ ! -s "$bridge_secret_file" ]; then
+  (umask 077 && openssl rand -hex 16 > "$bridge_secret_file")
+fi
+IDFON_BRIDGE_SECRET=$(cat "$bridge_secret_file")
+export IDFON_BRIDGE_SECRET
 
 # Daemon identity = the holder's ticket subject and the peer the apps add.
 daemon_id=$("$cli" --socket "$socket" status --json | jq -r '.result.identity.endpoint_id // .result.identity.public_key // .result.identity.id')
@@ -211,7 +247,7 @@ touch "$home/allowed-peers"
 # from the key, so this does not need the holder running.
 reply_args=()
 if [ -n "${AGENCY_URL:-}" ]; then
-  self_id=$("$root/target/release/$holder_bin" --key-file "$key" ticket --subject self 2>/dev/null | jq -r .issuer)
+  self_id=$("$root/target/release/$holder_bin" --key-file "$key" id 2>/dev/null)
   if [ -n "$self_id" ] && [ "$self_id" != null ]; then
     if reply_ticket=$(curl -fsS -X POST "$AGENCY_URL/reply-ticket" \
         -H 'content-type: application/json' \
@@ -232,9 +268,14 @@ IDFON_ENDPOINT_PORT="$endpoint_port" RUST_LOG="${RUST_LOG:-info}" "$root/target/
   >"$home/holder.ticket" 2>"$home/holder.log" &
 echo $! > "$home/holder.pid"
 for _ in $(seq 1 150); do [ -s "$home/holder.ticket" ] && break; sleep 0.1; done
+if [ ! -s "$home/holder.ticket" ]; then
+  echo "holder failed to start; last lines of $home/holder.log:" >&2
+  tail -5 "$home/holder.log" >&2
+  exit 1
+fi
 
 node "$integration/bridge.mjs" --socket "$home/holder.sock" \
-  --target "http://127.0.0.1:$eve_port" --secret m2-test-secret --port "$bridge_port" \
+  --target "http://127.0.0.1:$eve_port" --secret "$IDFON_BRIDGE_SECRET" --port "$bridge_port" \
   >"$home/bridge.out" 2>"$home/bridge.log" &
 echo $! > "$home/bridge.pid"
 for _ in $(seq 1 150); do
@@ -245,7 +286,6 @@ done
 # Agent tools reach their own bridge (for A2A card requests) via the URL
 # exported above; persist it so a companion process can find it.
 printf '%s' "$IDFON_BRIDGE_URL" > "$home/bridge-url" 2>/dev/null || true
-export IDFON_BRIDGE_SECRET=m2-test-secret
 
 # Companion: OUR voice engine (live-relay: the tyger endpointer + STT + TTS)
 # for backend=relay configs, wrapping THIS instance's eve agent as the brain.
@@ -307,7 +347,7 @@ if [ -n "${AGENCY_URL:-}" ]; then
   if [ -n "$dir_peer" ]; then
     grep -qxF "$dir_peer" "$home/allowed-peers" 2>/dev/null || printf '%s\n' "$dir_peer" >> "$home/allowed-peers"
     card=$(curl -fsS -X POST "http://127.0.0.1:$bridge_port/card" \
-      -H 'content-type: application/json' -H 'x-idfon-channel-secret: m2-test-secret' \
+      -H 'content-type: application/json' -H "x-idfon-channel-secret: $IDFON_BRIDGE_SECRET" \
       -d "{\"subject\":\"$dir_peer\",\"capabilities\":[\"agent.receive\"]}") || card=''
     if [ -n "$card" ]; then
       body=$(jq -nc --arg name "$contact_name" --arg model "$model" \

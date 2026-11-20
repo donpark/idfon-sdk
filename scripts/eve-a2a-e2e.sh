@@ -50,9 +50,9 @@ done
 C_PID=$("$NUF" --socket "$C" status --json | jq -r .result.identity.public_key)
 # Derive both stable holder IDs from their signing keys before binding sockets.
 A_TICKET=$($HOLDER --key-file "$work/a-holder.key" ticket --subject "$C_PID")
-A_HOLDER_PID=$(printf '%s' "$A_TICKET" | jq -r .issuer)
+A_HOLDER_PID=$($HOLDER --key-file "$work/a-holder.key" id)
 B_TICKET=$($HOLDER --key-file "$work/b-holder.key" ticket --subject "$A_HOLDER_PID" --capability agent.receive)
-B_PID=$(printf '%s' "$B_TICKET" | jq -r .issuer)
+B_PID=$($HOLDER --key-file "$work/b-holder.key" id)
 A_REPLY_TICKET=$($HOLDER --key-file "$work/a-holder.key" ticket --subject "$B_PID" --capability agent.receive)
 printf '%s' "$B_TICKET" >"$work/b-reply-ticket.json"
 printf '%s' "$A_REPLY_TICKET" >"$work/a-reply-ticket.json"
@@ -95,7 +95,7 @@ make_app() {
   "private": true,
   "type": "module",
   "dependencies": {
-    "eve": "0.68.0",
+    "eve": "1.0.2",
     "just-bash": "^3.4.2",
     "eve-idfon": "file:$integration"
   }
@@ -117,7 +117,7 @@ import sys
 print("export const target = " + json.dumps({
     "peerId": sys.argv[1],
     "endpointId": sys.argv[1],
-    "capabilityTicket": json.loads(sys.argv[2]),
+    "capabilityTicket": sys.argv[2],
 }) + " as const;")
 PY
 cat >"$A_APP/agent/agent.ts" <<'EOF'
@@ -143,7 +143,7 @@ export default defineAgent({
     }
     return `reply from eve-a: ${lastUserMessage}`;
   }),
-  modelContextWindowTokens: 4096,
+  modelContextWindowTokens: 32_768,
 });
 EOF
 cat >"$B_APP/agent/agent.ts" <<'EOF'
@@ -152,7 +152,7 @@ import { mockModel } from "eve/evals";
 
 export default defineAgent({
   model: mockModel(({ lastUserMessage }) => `reply from eve-b: ${lastUserMessage}`),
-  modelContextWindowTokens: 4096,
+  modelContextWindowTokens: 32_768,
 });
 EOF
 

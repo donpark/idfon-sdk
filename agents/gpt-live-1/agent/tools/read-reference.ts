@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import idfonExtension from "eve-idfon";
+import { createBridge } from "eve-idfon/bridge";
 
 // Resolve the part of an artifact that an IDFON-REF/1 envelope points at.
 // The ref carries the artifact's blob ticket and its selector; fetch the bytes
@@ -39,15 +40,7 @@ export default defineTool({
     selector: z.record(z.string(), z.unknown()).describe("selector object from the envelope"),
   }),
   async execute({ ticket, selector }) {
-    const response = await fetch(`${bridgeUrl()}/blob`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": bridgeSecret(),
-      },
-      body: JSON.stringify({ ticket }),
-    });
-    if (!response.ok) throw new Error(`idfon blob fetch returned HTTP ${response.status}`);
+    const response = await createBridge({ url: bridgeUrl(), secret: bridgeSecret() }).getBlob({ ticket });
     const result = (await response.json()) as { bytes_base64: string };
     const bytes = Buffer.from(result.bytes_base64, "base64");
     const type = String((selector as { type?: unknown }).type ?? "whole");

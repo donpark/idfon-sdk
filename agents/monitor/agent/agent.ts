@@ -11,5 +11,5 @@ export default defineAgent({
       : "diag monitor: device reports are filed under ~/.idfon/monitor/diag/<device>.jsonl",
   ),
   // The mock has no gateway metadata; compaction needs a window size.
-  modelContextWindowTokens: 4096,
+  modelContextWindowTokens: 32_768,
 });

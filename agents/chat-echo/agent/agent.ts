@@ -8,5 +8,5 @@ const selected = process.env.EVE_IDFON_MODEL;
 
 export default defineAgent({
   model: selected || mockModel(({ lastUserMessage }) => `reply from eve: ${lastUserMessage}`),
-  ...(selected ? {} : { modelContextWindowTokens: 4096 }),
+  ...(selected ? {} : { modelContextWindowTokens: 32_768 }),
 });

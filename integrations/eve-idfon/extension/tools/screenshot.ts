@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 
 import { emitEnvelope } from "../outbox";
+import { envelopes } from "../envelopes";
 
 // Request a screenshot from the user's device (docs/voice-multimodal.md). The
 // request is emitted to the outbox and rides the reply; the app captures its
@@ -16,7 +17,7 @@ export default defineTool({
     reason: z.string().optional().describe("Why the screenshot is needed (shown to the user)."),
   }),
   async execute({ reason }, ctx) {
-    emitEnvelope(ctx.session.id, `IDFON-SCREENSHOT/1\n${JSON.stringify({ reason: reason ?? null })}`);
+    emitEnvelope(ctx.session.id, envelopes.screenshot(reason ?? null));
     return { requested: true };
   },
 });

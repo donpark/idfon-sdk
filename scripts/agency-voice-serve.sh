@@ -38,7 +38,7 @@ if [ ! -s "$key" ]; then printf '%064d' "$((RANDOM * RANDOM))" > "$key"; fi
 
 # This voice agent's own endpoint id (derived from its key, before the holder
 # starts) so we can mint the Agency-issued ticket and admit both directions.
-self_id="$("$root/target/release/$EVE_IDFON_BIN" --key-file "$key" ticket --subject self 2>/dev/null | jq -r .issuer)"
+self_id="$("$root/target/release/$EVE_IDFON_BIN" --key-file "$key" id 2>/dev/null)"
 [ -n "$self_id" ] && [ "$self_id" != null ] || {
   echo "cannot derive the voice endpoint id" >&2
   exit 1

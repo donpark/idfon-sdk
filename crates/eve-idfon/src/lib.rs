@@ -130,6 +130,8 @@ enum Mode {
         #[arg(long)]
         ticket_id: Option<String>,
     },
+    /// Print this holder's peer id (the issuer of every ticket it mints).
+    Id,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -466,6 +468,11 @@ pub async fn run(live_registry: live::LiveCallRegistry) -> Result<()> {
                 live_params,
             )
             .await
+        }
+        Mode::Id => {
+            let key = load_key(key_file.as_deref(), false)?;
+            println!("{}", idfon_core::peer_id(&key));
+            Ok(())
         }
         Mode::Ticket {
             subject,
@@ -1885,64 +1892,10 @@ async fn handle_reply_inner(
     Ok(())
 }
 
-/// Drop trailing `IDFON-*/1` envelope blocks, keeping only the spoken text a
-/// voice session should say. Envelope headers are the first line of a block.
-fn strip_envelopes(text: &str) -> String {
-    let mut cut = text.len();
-    let mut offset = 0;
-    for line in text.split_inclusive('\n') {
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed.starts_with("IDFON-") && trimmed.ends_with("/1") {
-            cut = offset;
-            break;
-        }
-        offset += line.len();
-    }
-    text[..cut].trim_end().to_string()
-}
-
-/// Text to speak: the `IDFON-SPEAK/1` envelope text(s) when present, else the
-/// reply with envelopes stripped. Mirrors `idfon_voice_agent::speak_text`; kept
-/// local because the bridge streams the delegated reply as live commentary.
-fn speak_text(text: &str) -> String {
-    let mut spoken: Vec<String> = Vec::new();
-    let mut in_speak = false;
-    let mut body = String::new();
-    for line in text.lines() {
-        let trimmed = line.trim_end();
-        if trimmed.starts_with("IDFON-") && trimmed.ends_with("/1") {
-            if in_speak {
-                push_speak_json(&body, &mut spoken);
-                body.clear();
-            }
-            in_speak = trimmed == "IDFON-SPEAK/1";
-            continue;
-        }
-        if in_speak {
-            body.push_str(line);
-            body.push('\n');
-        }
-    }
-    if in_speak {
-        push_speak_json(&body, &mut spoken);
-    }
-    if spoken.is_empty() {
-        strip_envelopes(text)
-    } else {
-        spoken.join(" ")
-    }
-}
-
-fn push_speak_json(body: &str, out: &mut Vec<String>) {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(body.trim()) {
-        if let Some(text) = value.get("text").and_then(serde_json::Value::as_str) {
-            let text = text.trim();
-            if !text.is_empty() {
-                out.push(text.to_string());
-            }
-        }
-    }
-}
+// The spoken text of a reply: one reader shared with the voice agent.
+use idfon_protocol::speech::speak_text;
+#[cfg(test)]
+use idfon_protocol::speech::strip_envelopes;
 
 async fn handle_status(
     request_id: String,

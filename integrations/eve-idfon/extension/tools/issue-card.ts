@@ -1,7 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 
-import extension from "../extension";
+import { bridge } from "../bridge";
+import { envelopes } from "../envelopes";
 
 // The holder signs its own card; this tool is how the agent asks it to. Each
 // call mints a fresh, subject-bound capability ticket plus the holder's
@@ -18,22 +19,11 @@ export default defineTool({
       .describe("Extra grants beyond message.receive (e.g. agent.receive)."),
   }),
   async execute(input) {
-    const response = await fetch(`${extension.config.bridgeUrl}/card`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-idfon-channel-secret": extension.config.secret,
-      },
-      body: JSON.stringify({ subject: input.subject, capabilities: input.capabilities ?? [] }),
-    });
-    if (!response.ok) {
-      throw new Error(`idfon card issue returned HTTP ${response.status}`);
-    }
-    const result = (await response.json()) as { ticket: unknown; endpoint_addr: unknown };
+    const result = await bridge.issueCard(input.subject, input.capabilities ?? []);
     return {
       endpoint_addr: result.endpoint_addr,
       ticket: result.ticket,
-      envelope: `IDFON-CARD/1\nsubject=${input.subject}\ncontact=${JSON.stringify(result.endpoint_addr)}\nticket=${JSON.stringify(result.ticket)}`,
+      envelope: envelopes.card(input.subject, result.endpoint_addr, result.ticket),
     };
   },
 });
