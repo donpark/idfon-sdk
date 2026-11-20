@@ -50,10 +50,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: idfon-sdk
+      # A release (npm-v* tag) builds idfon-core at the same tag, so the
+      # published daemon is pinned; other runs build core's main.
       - uses: actions/checkout@v5
         with:
           repository: donpark/idfon-core
           path: idfon-core
+          ref: ${{ startsWith(github.ref, 'refs/tags/npm-v') && github.ref_name || '' }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:

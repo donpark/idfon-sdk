@@ -4,7 +4,7 @@ members = ["crates/eve-idfon", "crates/idfon-cli", "crates/idfon-live-media", "c
 
 [workspace.package]
 license = "MIT OR Apache-2.0"
-version = "0.11.0"
+version = "0.12.0"
 
 # Dev/test artifacts are a byproduct of `cargo check`/`cargo test`, never of the
 # shipping iOS/macOS builds — those are release. Full debuginfo made

@@ -15,7 +15,7 @@ set -eu
 otp=${1:?usage: scripts/publish-cli.sh <otp-pin> [run-id]}
 [ $# -gt 1 ] && run=$2 || run=""
 
-repo=donpark/idfon
+repo=donpark/idfon-sdk
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 version=$(node -p "require('$root/cli/idfon/package.json').version")
 

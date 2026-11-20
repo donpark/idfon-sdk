@@ -73,10 +73,12 @@ and the launcher then errors at first command).
   native runners, smoke-tests, and uploads the platform tarballs as artifacts
   — it does **not** publish. `publish` is gated on
   `if: startsWith(github.ref, 'refs/tags/npm-v')`, so it only runs when the
-  workflow executes with an `npm-v*` tag ref. Because `on.push` lists only
-  `branches: [main]` (no tags), pushing the tag triggers nothing: create and
-  push the tag, then dispatch it explicitly —
-  `gh workflow run cli.yml --ref npm-v0.9.0`. That rebuilds all four targets,
+  workflow executes with an `npm-v*` tag ref. The CLI ships idfon-core's
+  `idfond` and dylib, so **tag both repos**: push the same `npm-vX.Y.Z` tag
+  to idfon-core first (the release build checks core out at that tag), then
+  to idfon-sdk. Because `on.push` lists only `branches: [main]` (no tags),
+  pushing the tag triggers nothing: dispatch it explicitly —
+  `gh workflow run cli.yml --ref npm-v0.12.0`. That rebuilds all four targets,
   then downloads the artifacts and publishes all five packages. Requires the
   `NPM_TOKEN` repo secret. Re-runs are idempotent via npm's duplicate-version
   rejection. So a normal `main` push only builds; publishing always needs an
@@ -84,9 +86,14 @@ and the launcher then errors at first command).
 - **Local**: `npm login` once, then
   `npm publish` in `cli/idfon` and each `cli/idfon-*` dir.
 
+Release checklist: bump the version in both cargo workspaces
+(idfon-core and idfon-sdk `Cargo.toml`) and all five `cli/` packages (the main
+package's `optionalDependencies` pin the exact version); `idfon --version`
+must match `cli/idfon/package.json` (the CI smoke test checks it).
+
 Launch gate: the repo goes public first; `npm view idfon` confirmed the name
 free (2026-09-06). Platform packages use the same version as the Cargo
-workspace — bump in lockstep (currently 0.11.0).
+workspace — bump in lockstep (currently 0.12.0).
 
 ## The Eve channel package
 
