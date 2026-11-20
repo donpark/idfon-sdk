@@ -257,7 +257,15 @@ an answer reaches the room's shared session (`sessionAddress`). Lifecycle
 outcomes also use `IDFON-STATUS/1`: `authorization.completed`, and
 `turn.cancelled` / `turn.failed` (the channel's names for `turn.settled`
 outcomes `cancelled` / `failed`). `scripts/eve-hitl-e2e.sh` runs deny and
-approve end to end. The apps do not render approvals yet.
+approve end to end.
+
+The iOS and mac apps decode the status (`AgentStatus` / `ApprovalRequest` in
+`Models.swift`) and show a modal prompt with the request's options; the
+choice goes back to the agent as `IDFON-HITL-RESPONSE/1`. A replayed
+approval up to ten minutes old still prompts (Eve keeps the turn parked);
+ignoring the prompt leaves the turn waiting. `turn.failed` /
+`turn.cancelled` show as one chat line; other statuses are not shown.
+`mac/Checks/ApprovalCheck` pins the decode and the answer shape.
 
 The holder also forwards validated capability grants into Eve session auth
 attributes. Approval policies can therefore require an idfon grant such as
