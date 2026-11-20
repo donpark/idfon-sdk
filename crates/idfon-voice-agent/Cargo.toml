@@ -16,7 +16,7 @@ default = []
 gpt-live = ["dep:tokio-websockets", "dep:rustls", "dep:futures-util"]
 
 [dev-dependencies]
-idfon-director = { path = "../idfon-director" }
+idfon-director = { path = "../../../idfon-core/crates/idfon-director" }
 
 [dependencies]
 anyhow = "1"
@@ -25,11 +25,11 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 ed25519-dalek = "3"
 eve-idfon = { path = "../eve-idfon" }
 futures-util = { version = "0.3", optional = true }
-idfon-core = { path = "../idfon-core" }
+idfon-core = { path = "../../../idfon-core/crates/idfon-core" }
 idfon-live-media = { path = "../idfon-live-media" }
 idfon-radio = { path = "../idfon-radio" }
-idfon-protocol = { path = "../idfon-protocol" }
-idfon-voice = { path = "../idfon-voice", features = ["gateway"] }
+idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
+idfon-voice = { path = "../../../idfon-core/crates/idfon-voice", features = ["gateway"] }
 iroh = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring"], optional = true }
 serde = { version = "1", features = ["derive"] }

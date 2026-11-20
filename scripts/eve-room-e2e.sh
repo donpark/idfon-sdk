@@ -4,6 +4,7 @@ set -eu
 # R1 acceptance: two idfon peers share one Eve room session and both receive
 # the agent reply under the same conversation.
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 integration="$root/integrations/eve-idfon"
 
@@ -11,8 +12,8 @@ integration="$root/integrations/eve-idfon"
   cd "$integration"
   pnpm build >/dev/null
 )
-cargo build --release -p idfond -p idfon-cli -p eve-idfon >/dev/null
-codesign --force -s - target/release/idfond >/dev/null
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli -p eve-idfon >/dev/null
+codesign --force -s - "$core_target"/release/idfond >/dev/null
 
 work=$(mktemp -d /tmp/idfon-eve-room-e2e.XXXXXX)
 pids=""
@@ -23,14 +24,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
-HOLDER="$root/target/release/eve-idfon"
+NUF="$core_target/release/idfon"
+HOLDER="$core_target/release/eve-idfon"
 HOLDER_SOCK="$work/holder.sock"
 mkdir -p "$work/a" "$work/b"
 printf '%064d' 17 > "$work/holder.key"
 
 for who in a b; do
-  "$root/target/release/idfond" --socket "$work/$who/idfond.sock" \
+  "$core_target/release/idfond" --socket "$work/$who/idfond.sock" \
     --data-dir "$work/$who" >"$work/$who.log" 2>&1 &
   pids="$pids $!"
 done

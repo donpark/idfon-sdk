@@ -18,20 +18,21 @@ set -eu
 # PASS requires every HTTP status/body to match.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # The daemon core is reached through the vendored dylib, so build it first (the
 # thin idfond links it); flags must match native/build.zig.
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli -p idfon-edge
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond -p idfon-edge && cargo build --release -p idfon-cli
 
 # A relink can leave an ad-hoc signature that no longer matches the pages; the
 # kernel then SIGKILLs the process at exec ("Code Signature Invalid").
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
-NUF="$root/target/release/idfon"
-DAEMON="$root/target/release/idfond"
-EDGE="$root/target/release/idfon-edge"
+NUF="$core_target/release/idfon"
+DAEMON="$core_target/release/idfond"
+EDGE="$core_target/release/idfon-edge"
 
 W=$(mktemp -d /tmp/idfon-edge-e2e.XXXXXX)
 pids=""

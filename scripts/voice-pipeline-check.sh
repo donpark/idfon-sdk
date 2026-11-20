@@ -6,13 +6,14 @@ set -eu
 # seam no longer compiles/runs offline or the WAV is malformed.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/idfon-voice-pipeline.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 # --offline guarantees the check never reaches the network.
-out=$(cargo run --offline --quiet -p idfon-voice --example pipeline -- \
+out=$(core_cargo run --offline --quiet --example pipeline -p idfon-voice -- \
   "$work/pipeline.wav" "There are 42 yen left.")
 echo "$out"
 # The native G2P front end (P6) speaks written numbers as words.

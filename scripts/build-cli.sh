@@ -11,10 +11,11 @@
 #                                     (cargo zigbuild; brew install zig cargo-zigbuild)
 #
 # The dylib's install name/soname and idfond's $ORIGIN rpath are emitted by
-# the crates' build.rs (crates/iroh-c-ffi, crates/idfond) — no RUSTFLAGS here,
+# the crates' build.rs (idfon-core crates/iroh-c-ffi, crates/idfond) — no RUSTFLAGS here,
 # so every script shares one cargo fingerprint.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 host=$(rustc -vV | sed -n 's/^host: //p')
@@ -35,7 +36,7 @@ case "$target" in
 esac
 
 # macOS 15 (Sequoia) is the floor for shipped darwin binaries (matches
-# mac/Package.swift); pin it so the build machine's OS doesn't set it implicitly.
+# idfon-mac's Package.swift); pin it so the build machine's OS doesn't set it implicitly.
 case "$target" in *apple-darwin) export MACOSX_DEPLOYMENT_TARGET=15.0 ;; esac
 
 # $build / $cross_flag are intentionally word-split (POSIX sh has no arrays).
@@ -62,30 +63,33 @@ fi
 # 1. Vendored dylib (the thin idfond links it; see crates/idfond/build.rs).
 case "$target" in
   *apple-darwin)
-    $build --release -p iroh-c-ffi $cross_flag
+    (cd "$core" && $build --release -p iroh-c-ffi $cross_flag)
     ;;
   *linux-gnu)
     # ponytail: release CLI omits Linux VAAPI; the Ubuntu libva headers do not
     # match cros-libva's generated bindings. Native Linux builds keep VAAPI.
-    $build --release --no-default-features -p iroh-c-ffi $cross_flag
+    (cd "$core" && $build --release --no-default-features -p iroh-c-ffi $cross_flag)
     ;;
 esac
 
 # 2. Daemon + CLI.
+# Both workspaces build into idfon-core's target dir (.cargo/config.toml).
 if [ -n "$cross_flag" ]; then
-  out="target/$target/release"
+  out="$core_target/$target/release"
 else
-  out="target/release"
+  out="$core_target/release"
 fi
 case "$target" in
   *apple-darwin)
-    $build --release -p idfond -p idfon-cli $cross_flag
+    (cd "$core" && $build --release -p idfond $cross_flag)
+    $build --release -p idfon-cli $cross_flag
     # A relink can leave an ad-hoc signature that no longer matches the pages;
     # the kernel then SIGKILLs the process at exec ("Code Signature Invalid").
     codesign --force -s - "$out/$dylib" "$out/idfond"
     ;;
   *linux-gnu)
-    $build --release -p idfond -p idfon-cli $cross_flag
+    (cd "$core" && $build --release -p idfond $cross_flag)
+    $build --release -p idfon-cli $cross_flag
     ;;
 esac
 

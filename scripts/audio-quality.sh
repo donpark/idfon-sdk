@@ -19,6 +19,7 @@ set -eu
 # Usage: scripts/audio-quality.sh [--voice NAME] [--seconds N]
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 voice=Albert
@@ -35,8 +36,8 @@ for tool in say sox jq; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 1; }
 done
 
-cargo build --release -p idfond -p idfon-cli
-codesign --force -s - target/release/idfond target/release/idfon
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
+codesign --force -s - "$core_target"/release/idfond "$core_target"/release/idfon
 
 work=$(mktemp -d /tmp/idfon-audioq.XXXXXX)
 pids=""
@@ -58,20 +59,20 @@ sox "$work/speech.aiff" -r 48000 -c 1 "$work/speech.wav" 2>/dev/null
 
 # 2. Two daemons, publish on A (looped), get on B.
 mkdir -p "$work/pub" "$work/sub"
-target/release/idfond --socket "$A" --data-dir "$work/pub" &
+"$core_target"/release/idfond --socket "$A" --data-dir "$work/pub" &
 pids="$pids $!"
-target/release/idfond --socket "$B" --data-dir "$work/sub" &
+"$core_target"/release/idfond --socket "$B" --data-dir "$work/sub" &
 pids="$pids $!"
 for _ in $(seq 1 100); do
-  target/release/idfon --socket "$A" status --json >/dev/null 2>&1 \
-    && target/release/idfon --socket "$B" status --json >/dev/null 2>&1 && break
+  "$core_target"/release/idfon --socket "$A" status --json >/dev/null 2>&1 \
+    && "$core_target"/release/idfon --socket "$B" status --json >/dev/null 2>&1 && break
   sleep 0.1
 done
 
-ticket=$(target/release/idfon --socket "$A" send --stream --file "$work/speech.wav" --loop)
+ticket=$("$core_target"/release/idfon --socket "$A" send --stream --file "$work/speech.wav" --loop)
 sleep 2   # let the first announce land
 
-target/release/idfon --socket "$B" get "$ticket" --out "$work/rec.wav" \
+"$core_target"/release/idfon --socket "$B" get "$ticket" --out "$work/rec.wav" \
   --seconds "$seconds" --json > "$work/listen.json"
 echo "recorded $(jq -r .result.duration_ms "$work/listen.json")ms, $(jq -r .result.packets "$work/listen.json") packets"
 

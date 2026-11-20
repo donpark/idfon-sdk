@@ -12,13 +12,14 @@ set -eu
 # PASS requires every check to pass; exits non-zero on the first failure.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # The thin idfond links the vendored dylib; a relink can leave a stale ad-hoc
 # signature the kernel kills (same preamble as test-cli.sh).
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli -p idfon-mcp
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond -p idfon-mcp && cargo build --release -p idfon-cli
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-mcp-daemon.XXXXXX)
 pids=""
@@ -31,7 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 A="$work/a/idfond.sock"
 B="$work/b/idfond.sock"
 Q() { "$NUF" --socket "$1" "${@:2}"; }
@@ -40,7 +41,7 @@ mkdir -p "$work/a" "$work/b"
 "$NUF" --socket "$A" --data-dir "$work/a" >"$work/a.log" 2>&1 &
 pids="$pids $!"
 IDFON_MCP_COMMAND="python3 $root/scripts/mcp-fixture.py server" \
-  "$root/target/release/idfond" --socket "$B" --data-dir "$work/b" >"$work/b.log" 2>&1 &
+  "$core_target/release/idfond" --socket "$B" --data-dir "$work/b" >"$work/b.log" 2>&1 &
 pids="$pids $!"
 
 wait_ready() { # socket label
@@ -106,7 +107,7 @@ if [ -z "$SOCK" ] || [ "$SOCK" = "null" ]; then
   exit 1
 fi
 
-if ! python3 "$root/scripts/mcp-fixture.py" drive-uds "$root/target/release/idfon-mcp" "$SOCK"; then
+if ! python3 "$root/scripts/mcp-fixture.py" drive-uds "$core_target/release/idfon-mcp" "$SOCK"; then
   echo "FAIL: MCP round trip through the daemon relay" >&2
   echo "--- A log ---" >&2; tail -20 "$work/a.log" >&2
   echo "--- B log ---" >&2; tail -20 "$work/b.log" >&2

@@ -10,8 +10,8 @@ anyhow = "1"
 base64 = "0.23"
 bytes = "1"
 ed25519-dalek = "3"
-idfon-core = { path = "../idfon-core" }
-idfon-protocol = { path = "../idfon-protocol" }
+idfon-core = { path = "../../../idfon-core/crates/idfon-core" }
+idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
 iroh = "1"
 iroh-live = { git = "https://github.com/n0-computer/iroh-live", rev = "60a3fcfc0dd2416f640496a2787404552b45cdb3", default-features = false, features = ["media"] }
 moq-audio = { git = "https://github.com/moq-dev/moq", rev = "4a6f52248", default-features = false }

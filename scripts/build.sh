@@ -17,9 +17,6 @@ mode=build
 
 if [ "$mode" = clean ]; then
   pnpm cli clean
-  pnpm mac clean
-  pnpm ios clean
-  pnpm native clean
   pnpm eve clean
   bash scripts/voice.sh clean
   exit 0

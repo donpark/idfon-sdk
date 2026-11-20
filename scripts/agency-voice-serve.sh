@@ -14,6 +14,7 @@
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 agency_home="${AGENCY_HOME:-$HOME/.idfon/agency}"
 agency_addr_file="$agency_home/holder.ticket"
 [ -s "$agency_addr_file" ] || {
@@ -38,7 +39,7 @@ if [ ! -s "$key" ]; then printf '%064d' "$((RANDOM * RANDOM))" > "$key"; fi
 
 # This voice agent's own endpoint id (derived from its key, before the holder
 # starts) so we can mint the Agency-issued ticket and admit both directions.
-self_id="$("$root/target/release/$EVE_IDFON_BIN" --key-file "$key" id 2>/dev/null)"
+self_id="$("$core_target/release/$EVE_IDFON_BIN" --key-file "$key" id 2>/dev/null)"
 [ -n "$self_id" ] && [ "$self_id" != null ] || {
   echo "cannot derive the voice endpoint id" >&2
   exit 1
@@ -46,7 +47,7 @@ self_id="$("$root/target/release/$EVE_IDFON_BIN" --key-file "$key" id 2>/dev/nul
 
 # Agency-issued ticket authorizing this voice agent to message the Agency, and
 # admission on the Agency's allow-list (its holder reloads the file live).
-agency_ticket="$("$root/target/release/$EVE_IDFON_BIN" --key-file "$agency_home/holder.key" ticket --subject "$self_id" 2>/dev/null)"
+agency_ticket="$("$core_target/release/$EVE_IDFON_BIN" --key-file "$agency_home/holder.key" ticket --subject "$self_id" 2>/dev/null)"
 [ -n "$agency_ticket" ] || { echo "cannot mint an Agency ticket for $self_id" >&2; exit 1; }
 grep -qxF "$self_id" "$agency_home/allowed-peers" 2>/dev/null || printf '%s\n' "$self_id" >> "$agency_home/allowed-peers"
 # Admit the Agency as a sender on this voice agent's holder so its replies land.

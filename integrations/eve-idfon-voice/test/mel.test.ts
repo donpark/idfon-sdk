@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { process } from "../src/tyger/mel.ts";
 
 const fixtures = JSON.parse(readFileSync(
-  new URL("../../../ports/tyger-swift/Tests/TygerVoiceTests/fixtures.json", import.meta.url), "utf8"));
+  new URL("../../../../idfon-core/swift/tyger-swift/Tests/TygerVoiceTests/fixtures.json", import.meta.url), "utf8"));
 
 const TOL = 2e-3;
 

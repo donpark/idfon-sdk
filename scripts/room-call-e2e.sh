@@ -10,6 +10,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 pnpm cli build
@@ -24,12 +25,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 ROOM="r_$(printf '%032d' 7)"
 
 for who in a b c; do
   mkdir -p "$work/$who"
-  target/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
+  "$core_target"/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
     >"$work/$who.log" 2>&1 &
   pids="$pids $!"
 done

@@ -9,11 +9,12 @@ set -eu
 # cached copy is only a hint, and serverInfo is unverified display data.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli -p idfon-mcp
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond -p idfon-mcp && cargo build --release -p idfon-cli
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-mcp-ticket.XXXXXX)
 pids=""
@@ -26,13 +27,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 printf '%064d' 3 > "$work/agent.key"
 A="$work/a.sock"
 Q() { "$NUF" --socket "$A" "${@:2}"; }
 
 # Agent side: mint the contact ticket (probes its own server/discover).
-"$root/target/release/idfon-mcp" serve \
+"$core_target/release/idfon-mcp" serve \
   --contact \
   --key-file "$work/agent.key" \
   --command "python3 $root/scripts/mcp-fixture.py server" \
@@ -59,7 +60,7 @@ fi
 AGENT_EP=$(echo "$TICKET" | jq -r .peer.endpoint_id)
 
 # Offline add: the daemon has never connected to the agent.
-"$root/target/release/idfond" --socket "$A" --data-dir "$work/a" >"$work/a.log" 2>&1 &
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/a" >"$work/a.log" 2>&1 &
 pids="$pids $!"
 for _ in $(seq 1 150); do
   "$NUF" --socket "$A" status --json >/dev/null 2>&1 && break
@@ -83,7 +84,7 @@ if [ -z "$SOCK" ] || [ "$SOCK" = "null" ]; then
   exit 1
 fi
 
-if ! python3 "$root/scripts/mcp-fixture.py" drive-uds "$root/target/release/idfon-mcp" "$SOCK"; then
+if ! python3 "$root/scripts/mcp-fixture.py" drive-uds "$core_target/release/idfon-mcp" "$SOCK"; then
   echo "FAIL: live server/discover through the relay" >&2
   echo "--- agent ---" >&2; tail -10 "$work/agent.err" >&2
   echo "--- daemon ---" >&2; tail -10 "$work/a.log" >&2

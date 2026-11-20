@@ -1,14 +1,41 @@
-# Idfon
+# idfon-sdk
 
-Idfon is a peer-to-peer communication and data-transfer system built on
-[iroh](https://www.iroh.computer). It provides a local daemon, a CLI, and
-native clients. Idfon stores identities and peer state on the local machine.
-Connections may use direct paths, discovery, or relays supplied by iroh.
+What developers use to build on [Idfon](https://github.com/donpark/idfon-home):
+the `idfon` CLI (and its npm packages), the MCP server, the Eve integration and
+agents, the voice-agent runner, and the end-to-end tests that drive the daemon
+through the CLI.
 
 > **Status:** experimental and pre-release. The CLI is available as an npm
-> package. Native clients are usable for development. The iOS ↔ Eve text-agent
-> demo passes end-to-end tests on a physical iPhone. Voice/STT/TTS remains a
-> separate follow-up.
+> package.
+
+## The idfon repositories
+
+Clone them side by side (for example in `~/dev`):
+
+| Repo | What it holds |
+| --- | --- |
+| [idfon-core](https://github.com/donpark/idfon-core) | protocol, identity, transport, media, the daemon (`idfond`), the C ABI the apps link, the edge, and the Swift packages both apps use |
+| [idfon-sdk](https://github.com/donpark/idfon-sdk) | the `idfon` CLI, the MCP server, the Eve integration and agents, the voice-agent runner, and the end-to-end tests |
+| [idfon-ios](https://github.com/donpark/idfon-ios) | the iPhone app |
+| [idfon-mac](https://github.com/donpark/idfon-mac) | the macOS app |
+| [idfon-home](https://github.com/donpark/idfon-home) | product docs and planning |
+| [idfon](https://github.com/donpark/idfon) | the archive: history before the split (2026-11-20), model R&D (Tyger ports, ASR tools, the voice corpus tools) and the Native-SDK shell |
+
+idfon-sdk and both apps build idfon-core from `../idfon-core`; set
+`IDFON_CORE` to use another checkout.
+
+## Building
+
+```sh
+# idfon-core checked out beside this repo (or IDFON_CORE=/path/to/idfon-core)
+cargo check --workspace --all-targets
+scripts/test-cli.sh        # builds core's idfond + dylib and this repo's CLI
+pnpm install && pnpm build
+```
+
+Both cargo workspaces build into `../idfon-core/target` (see
+`.cargo/config.toml`), so `idfon`, `idfond` and `libiroh_c_ffi` land side by
+side; the CLI starts the daemon from its own directory.
 
 ## CLI installation
 
@@ -119,50 +146,6 @@ connections. `idfon-mcp-server` exposes selected idfon operations as MCP
 tools. This area is experimental. See
 [MCP transport](docs/mcp-transport.md).
 
-## Native clients
-
-The repository contains native clients for macOS and iOS. They use the same
-daemon protocol and share the Rust networking/media components, but are not
-release products yet.
-
-Install the JavaScript workspace dependencies first:
-
-```sh
-pnpm install
-```
-
-Build and start the iOS app on a connected, unlocked iPhone:
-
-```sh
-pnpm ios build
-DEVICE=<iphone-udid-or-name> pnpm ios device
-```
-
-`pnpm ios build` produces a device Release build. `pnpm ios device` installs
-and starts it through `devicectl`. Omit `DEVICE` to use the first available
-physical iPhone. The iOS app is device-only. The simulator is not supported.
-
-Build and start the macOS app:
-
-```sh
-pnpm mac build
-pnpm mac start
-```
-
-The macOS and iOS apps use the local daemon and share the Rust networking/media
-components. See the platform-specific docs for details:
-
-- [macOS client](mac/README.md)
-- [Native SDK client](native/README.md)
-- iOS client (`ios/`)
-
-Human-to-human calls use Opus by default. LiquidCodec (24 kHz mono, 80 ms
-frames, a neural speech codec run on Core ML) can be chosen per contact on
-both apps. Its models download from the idfon edge when first needed, and a call
-falls back to Opus only if the download or load fails. The codec lives in the
-shared Swift package `ports/liquid-swift`. The design notes and measurements
-are in `idfon-home/docs/liquidcodec.md`.
-
 ## Eve extension and agents
 
 Build the `eve-idfon` extension and the agents under `agents/` separately from
@@ -198,45 +181,11 @@ See [live-voice agent](docs/live-voice.md),
 multi-contact model selection), [agent agency](docs/agent-agency.md),
 and [Eve ingress channel](docs/idfon-eve.md).
 
-## Privacy
-
-Idfon is peer-to-peer: content moves directly between the parties' devices,
-and keys live on the devices. The always-on edge is a **wake channel, not a
-content host**. The precise picture, because vague privacy claims are worse
-than none:
-
-| Who | What they see |
-|---|---|
-| The other party(ies) | Messages and media, end-to-end over iroh (QUIC). A relay (N0's or `relay.idfon.net`) may forward **ciphertext** when NAT demands it. |
-| The edge (`idfon.net` or self-hosted) | Push device tokens + topics per identity (needed to wake a phone), each device's ring thresholds, each ring's score (in memory, ~5 min), and — briefly — the **call invite** so a push-woken phone can pull it (in memory, ~5 min, dropped on cancel). The invite carries the call's media ticket; anyone who could read the edge store in those minutes could join that call's media. Self-host the edge if that is a concern for you. |
-| Apple (APNs) | **Identifiers only** — `call_uuid`, `caller_id`, `has_video`, plus fixed generic text ("Incoming call" / "Missed call") on notification pushes. No names, no content; display names resolve on-device from the user's own contacts. |
-| The iOS system call log | Real peer display names, by deliberate decision (donpark/idfon#48): the call log is the user's own device log. A “hide from call log” preference is the switch if that ever changes. |
-| A diagnostics monitor (`IDFON-DIAG/1`) | Event markers only — wake outcomes, push registration results, timings, build stamps. Sent **only** to a monitor peer the user configures; no audio, no message content, no token values. |
-| An MCP agent (see `docs/mcp-control.md`) | Reachable only over iroh, to parties the user approves: own devices (standing grants), approved parties (request-time approval block, short-lived scoped tickets), outsiders (one-shot tickets). Diagnostics are read-only first; every request and approval is audited; there is no public HTTP control endpoint. |
-
-Two honest notes: capability **tickets are bearer credentials** — whoever
-holds one can exercise its scoped rights until it expires, so treat them
-like passwords. And while the iPhone app is suspended and the screen is
-locked, nothing runs to be observed — the frozen window is visible only in
-what the app reported before and after it.
-
 ## Documentation
 
-Start at [docs/README.md](docs/README.md). It is the index of current docs by
-topic.
-
-## Development
-
-```sh
-cargo test -p idfon-protocol -p idfon-core -p idfon-daemon
-scripts/test-cli.sh
-scripts/test-e2e.sh
-scripts/stream-e2e.sh
-```
-
-The workspace has the protocol, core networking, daemon, client, CLI, media,
-and MCP crates. See the architecture documentation for the current boundaries
-and known limitations.
+Start at [docs/README.md](docs/README.md). The CLI's agent skill is
+[skills/idfon/SKILL.md](skills/idfon/SKILL.md); `tools/cli-eval` measures how
+easily an agent uses the CLI from it.
 
 ## License
 

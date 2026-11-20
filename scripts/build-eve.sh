@@ -14,6 +14,7 @@
 # refreshed after relinking.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 host=$(rustc -vV | sed -n 's/^host: //p')
@@ -50,7 +51,7 @@ fi
 
 $build --release -p eve-idfon -p idfon-voice-agent --features idfon-voice-agent/gpt-live $cross_flag
 
-if [ -n "$cross_flag" ]; then out="target/$target/release"; else out="target/release"; fi
+if [ -n "$cross_flag" ]; then out="target/$target/release"; else out=""$core_target"/release"; fi
 case "$target" in
   *apple-darwin)
     # A relink can leave an ad-hoc signature that no longer matches the pages;

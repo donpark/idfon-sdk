@@ -8,7 +8,8 @@
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cli="${IDFON_CLI:-$root/target/release/idfon}"
+. "$root/scripts/lib/core.sh"
+cli="${IDFON_CLI:-$core_target/release/idfon}"
 socket="${IDFON_SOCKET:-/tmp/idfon/idfond.sock}"
 device="${IPHONE_UDID:-${IPHONE_NAME:-${DEVICE:-}}}"
 eve_ticket="${EVE_TICKET:-}"

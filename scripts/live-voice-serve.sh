@@ -30,7 +30,8 @@
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cli="${IDFON_CLI:-$root/target/release/idfon}"
+. "$root/scripts/lib/core.sh"
+cli="${IDFON_CLI:-$core_target/release/idfon}"
 socket="${IDFON_SOCKET:-/tmp/idfon/idfond.sock}"
 agent="${EVE_AGENT:-llm}"
 # Per-agent serve defaults: `agents/<agent>/serve.env`, KEY=VALUE lines that
@@ -141,24 +142,24 @@ esac
 # Build when the holder is missing or any Rust source it is built from is
 # newer. Existence alone is not enough: a stale binary silently outlives a
 # source change (e.g. the voice-route gate), so check mtimes too.
-holder_bin_path="$root/target/release/$holder_bin"
+holder_bin_path="$core_target/release/$holder_bin"
 stale=0
 if [ ! -x "$holder_bin_path" ]; then
   stale=1
 elif [ -n "$(
-  find "$root/crates" "$root/crates/iroh-c-ffi/src" \
+  find "$root/crates" "$core/crates" \
     "$root/Cargo.toml" "$root/Cargo.lock" \
-    "$root/crates/iroh-c-ffi/Cargo.toml" \
+    "$core/Cargo.toml" "$core/Cargo.lock" \
     -newer "$holder_bin_path" -print -quit 2>/dev/null
 )" ]; then
   stale=1
 fi
 if [ "$stale" = 1 ] || [ "${FORCE_BUILD:-}" = 1 ]; then
-      cargo build --release -p iroh-c-ffi
-  cargo build --release -p idfond -p idfon-cli
+      core_cargo build --release -p iroh-c-ffi
+  core_cargo build --release -p idfond && cargo build --release -p idfon-cli
   cargo build --release -p "$holder_pkg" ${holder_features:+--features "$holder_features"}
-  codesign --force -s - "$root/target/release/libiroh_c_ffi.dylib" \
-    "$root/target/release/$holder_bin" "$root/target/release/idfond"
+  codesign --force -s - "$core_target/release/libiroh_c_ffi.dylib" \
+    "$core_target/release/$holder_bin" "$core_target/release/idfond"
 fi
 
 # The agent runs where it lives (`agents/<name>`); it is never copied into the
@@ -247,7 +248,7 @@ touch "$home/allowed-peers"
 # from the key, so this does not need the holder running.
 reply_args=()
 if [ -n "${AGENCY_URL:-}" ]; then
-  self_id=$("$root/target/release/$holder_bin" --key-file "$key" id 2>/dev/null)
+  self_id=$("$core_target/release/$holder_bin" --key-file "$key" id 2>/dev/null)
   if [ -n "$self_id" ] && [ "$self_id" != null ]; then
     if reply_ticket=$(curl -fsS -X POST "$AGENCY_URL/reply-ticket" \
         -H 'content-type: application/json' \
@@ -260,7 +261,7 @@ if [ -n "${AGENCY_URL:-}" ]; then
     fi
   fi
 fi
-IDFON_ENDPOINT_PORT="$endpoint_port" RUST_LOG="${RUST_LOG:-info}" "$root/target/release/$holder_bin" --key-file "$key" serve \
+IDFON_ENDPOINT_PORT="$endpoint_port" RUST_LOG="${RUST_LOG:-info}" "$core_target/release/$holder_bin" --key-file "$key" serve \
   --socket "$home/holder.sock" "${allow_args[@]}" --allow-file "$home/allowed-peers" \
   --blob-dir "$home/blobs" \
   ${live_args[@]+"${live_args[@]}"} \
@@ -374,10 +375,10 @@ done
 # Capability tickets: holder-signed, subject-bound to each sender (the holder
 # rejects a ticket whose subject != the message's sender id), covering the
 # message ingress the apps' sends need. One file per peer.
-"$root/target/release/$holder_bin" --key-file "$key" ${live_args[@]+"${live_args[@]}"} ticket \
+"$core_target/release/$holder_bin" --key-file "$key" ${live_args[@]+"${live_args[@]}"} ticket \
   --subject "$daemon_id" > "$home/capability-ticket.json"
 while IFS= read -r endpoint; do
-  "$root/target/release/$holder_bin" --key-file "$key" ${live_args[@]+"${live_args[@]}"} ticket \
+  "$core_target/release/$holder_bin" --key-file "$key" ${live_args[@]+"${live_args[@]}"} ticket \
     --subject "$endpoint" > "$home/capability-ticket-$endpoint.json"
 done < <(extra_senders | awk '!seen[$0]++')
 

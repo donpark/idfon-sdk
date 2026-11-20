@@ -15,14 +15,15 @@ set -eu
 # Requires: ffmpeg on PATH (source generation + validation only).
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # Build the C-FFI dylib first (the thin idfond links it; crates/idfond/build.rs).
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
 # A relink can leave an ad-hoc signature that no longer matches the pages;
 # the kernel then SIGKILLs the process at exec ("Code Signature Invalid").
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond target/release/idfon
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond "$core_target"/release/idfon
 
 work=$(mktemp -d /tmp/idfon-video-e2e.XXXXXX)
 pids=""
@@ -32,7 +33,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 A="$work/publisher/idfond.sock"
 B="$work/listener/idfond.sock"
 
@@ -47,9 +48,9 @@ ffmpeg -v error -y -f lavfi -i testsrc=duration=4:size=320x240:rate=15 \
   "$work/vid.mp4"
 
 mkdir -p "$work/publisher" "$work/listener"
-"$root/target/release/idfond" --socket "$A" --data-dir "$work/publisher" &
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/publisher" &
 pids="$pids $!"
-"$root/target/release/idfond" --socket "$B" --data-dir "$work/listener" &
+"$core_target/release/idfond" --socket "$B" --data-dir "$work/listener" &
 pids="$pids $!"
 
 wait_ready() { # socket label

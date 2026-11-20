@@ -12,15 +12,16 @@ set -eu
 # file to be byte-identical to its original.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # Build the C-FFI dylib first (the thin idfond links it; crates/idfond/build.rs).
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
 
 # A relink can leave an ad-hoc signature that no longer matches the pages;
 # the kernel then SIGKILLs the process at exec ("Code Signature Invalid").
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-e2e.XXXXXX)
 pids=""
@@ -30,7 +31,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 A="$work/sender/idfond.sock"
 B="$work/receiver/idfond.sock"
 
@@ -47,9 +48,9 @@ with wave.open(sys.argv[1], "w") as w:
 EOF
 
 mkdir -p "$work/sender" "$work/receiver"
-"$root/target/release/idfond" --socket "$A" --data-dir "$work/sender" &
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/sender" &
 pids="$pids $!"
-"$root/target/release/idfond" --socket "$B" --data-dir "$work/receiver" &
+"$core_target/release/idfond" --socket "$B" --data-dir "$work/receiver" &
 pids="$pids $!"
 
 wait_ready() { # socket label

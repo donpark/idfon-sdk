@@ -38,6 +38,7 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 agent=llm
@@ -94,7 +95,7 @@ if [ -n "$variants" ]; then
   done
 fi
 
-cli="$root/target/release/idfon"
+cli="$core_target/release/idfon"
 serve="$root/scripts/live-voice-serve.sh"
 results="$(mktemp /tmp/idfon-lab-scores.XXXXXX)"
 
@@ -119,7 +120,7 @@ run_config() {
   home="$work/home"
   mkdir -p "$work/daemon" "$home"
 
-  "$root/target/release/idfond" --socket "$socket" --data-dir "$work/daemon" \
+  "$core_target/release/idfond" --socket "$socket" --data-dir "$work/daemon" \
     >"$work/daemon.log" 2>&1 &
   daemon_pid=$!
   for _ in $(seq 1 150); do

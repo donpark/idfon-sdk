@@ -15,13 +15,14 @@ set -eu
 # Usage: SIZES="1 4 16" scripts/fanout-e2e.sh
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 SIZES="${SIZES:-1 4 16}"
 LISTEN_SECONDS="${LISTEN_SECONDS:-12}"
 
-cargo build --release -p idfond -p idfon-cli
-codesign --force -s - target/release/idfond target/release/idfon
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
+codesign --force -s - "$core_target"/release/idfond "$core_target"/release/idfon
 
 work=$(mktemp -d /tmp/idfon-fanout.XXXXXX)
 pids=""
@@ -36,7 +37,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 A="$work/pub/idfond.sock"
 B="$work/sub/idfond.sock"
 
@@ -55,9 +56,9 @@ w.writeframes(frames); w.close()
 EOF
 
 mkdir -p "$work/pub" "$work/sub"
-target/release/idfond --socket "$A" --data-dir "$work/pub" &
+"$core_target"/release/idfond --socket "$A" --data-dir "$work/pub" &
 pids="$pids $!"
-target/release/idfond --socket "$B" --data-dir "$work/sub" &
+"$core_target"/release/idfond --socket "$B" --data-dir "$work/sub" &
 pids="$pids $!"
 for _ in $(seq 1 100); do
   "$NUF" --socket "$A" status --json >/dev/null 2>&1 \

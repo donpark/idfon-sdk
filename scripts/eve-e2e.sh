@@ -5,6 +5,7 @@ set -eu
 # session -> endpoint holder -> idfon peer.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 integration="$root/integrations/eve-idfon"
@@ -14,9 +15,9 @@ integration="$root/integrations/eve-idfon"
   npm run build >/dev/null
 )
 
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli -p eve-idfon
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli -p eve-idfon
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-eve-e2e.XXXXXX)
 pids=""
@@ -29,14 +30,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
-HOLDER="$root/target/release/eve-idfon"
+NUF="$core_target/release/idfon"
+HOLDER="$core_target/release/eve-idfon"
 A="$work/a/idfond.sock"
 HOLDER_SOCK="$work/holder.sock"
 mkdir -p "$work/a"
 printf '%064d' 17 > "$work/holder.key"
 
-"$root/target/release/idfond" --socket "$A" --data-dir "$work/a" >"$work/a.log" 2>&1 &
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/a" >"$work/a.log" 2>&1 &
 pids="$pids $!"
 for _ in $(seq 1 150); do
   if "$NUF" --socket "$A" status --json >/dev/null 2>&1; then break; fi

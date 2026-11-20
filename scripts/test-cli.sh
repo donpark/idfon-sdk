@@ -15,13 +15,14 @@ set -eu
 # PASS requires every check to pass; exits non-zero on the first failure.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # Same build/sign preamble as test-e2e.sh: the thin idfond links the vendored
 # dylib, and a relink can leave a stale ad-hoc signature the kernel kills.
-  cargo build --release -p iroh-c-ffi
-cargo build --release -p idfond -p idfon-cli
-codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+  core_cargo build --release -p iroh-c-ffi
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
+codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-cli.XXXXXX)
 pids=""
@@ -31,7 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 A="$work/a/idfond.sock"
 B="$work/b/idfond.sock"
 Q() { # idfon against a socket, passthrough
@@ -39,9 +40,9 @@ Q() { # idfon against a socket, passthrough
 }
 
 mkdir -p "$work/a" "$work/b"
-"$root/target/release/idfond" --socket "$A" --data-dir "$work/a" &
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/a" &
 pids="$pids $!"
-"$root/target/release/idfond" --socket "$B" --data-dir "$work/b" &
+"$core_target/release/idfond" --socket "$B" --data-dir "$work/b" &
 pids="$pids $!"
 
 wait_ready() { # socket label

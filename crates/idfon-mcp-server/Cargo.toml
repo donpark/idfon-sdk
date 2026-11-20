@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-idfon-client = { path = "../idfon-client" }
-idfon-protocol = { path = "../idfon-protocol" }
-idfon-telemetry = { path = "../idfon-telemetry", features = ["otlp"] }
+idfon-client = { path = "../../../idfon-core/crates/idfon-client" }
+idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
+idfon-telemetry = { path = "../../../idfon-core/crates/idfon-telemetry", features = ["otlp"] }
 serde_json = "1"

@@ -11,14 +11,12 @@ on:
     branches: [main]
     paths:
       - "crates/**"
-      - "crates/iroh-c-ffi/**"
       - "cli/**"
       - "scripts/build-cli.sh"
       - ".github/workflows/cli.yml"
   pull_request:
     paths:
       - "crates/**"
-      - "crates/iroh-c-ffi/**"
       - "cli/**"
       - "scripts/build-cli.sh"
       - ".github/workflows/cli.yml"
@@ -43,10 +41,23 @@ jobs:
           - { os: ubuntu-22.04, pkg: idfon-linux-x64 }
           - { os: ubuntu-22.04-arm, pkg: idfon-linux-arm64 }
     runs-on: ${{ matrix.os }}
+    # idfon-sdk builds against a sibling idfon-core checkout (idfond and the
+    # dylib come from there; both workspaces share idfon-core/target).
+    defaults:
+      run:
+        working-directory: idfon-sdk
     steps:
       - uses: actions/checkout@v5
+        with:
+          path: idfon-sdk
+      - uses: actions/checkout@v5
+        with:
+          repository: donpark/idfon-core
+          path: idfon-core
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: idfon-core
       # cpal → ALSA only since the capture feature is off (no pipewire dep).
       # The Linux VAAPI encoder also needs libva headers and pkg-config metadata.
       - name: Install audio/video dev libs (Linux)
@@ -79,7 +90,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.pkg }}
-          path: "*.tgz"
+          path: "idfon-sdk/*.tgz"
           if-no-files-found: error
 
   publish:

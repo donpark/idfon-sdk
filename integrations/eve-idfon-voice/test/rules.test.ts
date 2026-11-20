@@ -1,4 +1,4 @@
-// Decision parity: replay crates/idfon-voice/tests/data/turns-fixtures.json
+// Decision parity: replay idfon-core crates/idfon-voice/tests/data/turns-fixtures.json
 // (generated from tyger-s2s's rules.py by scripts/tyger-rules-fixtures.py) through
 // the TS port, byte-identical to what the Rust port asserts.
 import { test } from "node:test";
@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { TurnSession, type Event } from "../src/tyger/rules.ts";
 
 const cases = JSON.parse(readFileSync(
-  new URL("../../../crates/idfon-voice/tests/data/turns-fixtures.json", import.meta.url), "utf8"));
+  new URL("../../../../idfon-core/crates/idfon-voice/tests/data/turns-fixtures.json", import.meta.url), "utf8"));
 
 const norm = (e: Event) => JSON.parse(JSON.stringify(e));
 

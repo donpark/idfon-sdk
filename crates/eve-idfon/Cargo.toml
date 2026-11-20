@@ -10,7 +10,7 @@ name = "eve-idfon"
 path = "src/main.rs"
 
 [dependencies]
-idfon-config = { path = "../idfon-config" }
+idfon-config = { path = "../../../idfon-core/crates/idfon-config" }
 anyhow = "1"
 axum = "0.8"
 base64 = "0.23"
@@ -18,12 +18,12 @@ blake3 = "1"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = "3"
-idfon-core = { path = "../idfon-core" }
-idfon-h3 = { path = "../idfon-h3" }
-idfon-media = { path = "../idfon-media" }
-idfon-protocol = { path = "../idfon-protocol" }
-idfon-telemetry = { path = "../idfon-telemetry", features = ["otlp"] }
-idfon-voice = { path = "../idfon-voice" }
+idfon-core = { path = "../../../idfon-core/crates/idfon-core" }
+idfon-h3 = { path = "../../../idfon-core/crates/idfon-h3" }
+idfon-media = { path = "../../../idfon-core/crates/idfon-media" }
+idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
+idfon-telemetry = { path = "../../../idfon-core/crates/idfon-telemetry", features = ["otlp"] }
+idfon-voice = { path = "../../../idfon-core/crates/idfon-voice" }
 iroh = "1"
 iroh-blobs = "0.104"
 serde = { version = "1", features = ["derive"] }

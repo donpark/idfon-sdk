@@ -17,9 +17,10 @@ set -eu
 # even on one host; other rows take whatever path iroh picks. rtt measures a
 # peer through an already-running daemon (its relay config applies).
 #
-# Binaries: env IDFON_CLI / IDFOND_BIN, else target/release/, else PATH.
+# Binaries: env IDFON_CLI / IDFOND_BIN, else "$core_target"/release/, else PATH.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 # Enterprise relay token (shared_token mode, docs/benchmarks.md): env wins,
@@ -35,12 +36,12 @@ fi
 # Ad-hoc sign after relink — a stale signature gets SIGKILLed at exec.
 if [ -z "${IDFON_CLI:-}" ]; then
   if [ "$(uname)" = Darwin ]; then
-          cargo build --release --quiet -p iroh-c-ffi
-    cargo build --release --quiet -p idfon-cli -p idfond
-    codesign --force -s - target/release/libiroh_c_ffi.dylib target/release/idfond
+          core_cargo build --release --quiet -p iroh-c-ffi
+    core_cargo build --release --quiet -p idfond && cargo build --release --quiet -p idfon-cli
+    codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
   else
-    cargo build --release --quiet -p iroh-c-ffi
-    cargo build --release --quiet -p idfon-cli -p idfond
+    core_cargo build --release --quiet -p iroh-c-ffi
+    core_cargo build --release --quiet -p idfond && cargo build --release --quiet -p idfon-cli
   fi
 fi
 

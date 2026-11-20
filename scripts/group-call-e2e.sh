@@ -17,11 +17,12 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
 pnpm cli build
-cargo build --release -p iroh-c-ffi --example group_member
-MEMBER="$root/target/release/examples/group_member"
+core_cargo build --release -p iroh-c-ffi --example group_member
+MEMBER="$core_target/release/examples/group_member"
 
 work=$(mktemp -d /tmp/idfon-group-call.XXXXXX)
 pids=""
@@ -35,12 +36,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-NUF="$root/target/release/idfon"
+NUF="$core_target/release/idfon"
 ROOM="r_$(printf '%032d' 7)"
 
 for who in a b c; do
   mkdir -p "$work/$who"
-  target/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
+  "$core_target"/release/idfond --socket "$work/$who/idfond.sock" --data-dir "$work/$who" \
     >"$work/$who.log" 2>&1 &
   pids="$pids $!"
 done
@@ -148,7 +149,7 @@ for f in "$work/a-440.json" "$work/c-990.json"; do
 done
 
 # Bring b's daemon back for scenario 4.
-target/release/idfond --socket "$work/b/idfond.sock" --data-dir "$work/b" >>"$work/b.log" 2>&1 &
+"$core_target"/release/idfond --socket "$work/b/idfond.sock" --data-dir "$work/b" >>"$work/b.log" 2>&1 &
 pids="$pids $!"
 for _ in $(seq 1 150); do
   "$NUF" --socket "$(sock b)" status --json >/dev/null 2>&1 && break
@@ -167,7 +168,7 @@ sleep 8
 pid_a=$(daemon_pid a)
 kill "$pid_a" 2>/dev/null || true
 while kill -0 "$pid_a" 2>/dev/null; do sleep 0.1; done
-target/release/idfond --socket "$work/a/idfond.sock" --data-dir "$work/a" >>"$work/a.log" 2>&1 &
+"$core_target"/release/idfond --socket "$work/a/idfond.sock" --data-dir "$work/a" >>"$work/a.log" 2>&1 &
 pids="$pids $!"
 echo "(a's daemon restarted at ~10 s)"
 wait $pa $pb $pc || true

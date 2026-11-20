@@ -17,6 +17,7 @@
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 station="${1:-}"
 peer="${2:-}"
 if [ -z "$station" ] || [ -z "$peer" ]; then
@@ -38,7 +39,7 @@ fi
 home="${EVE_VOICE_HOME:-$HOME/.idfon/$instance}"
 key="$home/holder.key"
 contact_file="$home/holder.ticket"
-holder_bin="$root/target/release/eve-idfon-voice"
+holder_bin="$core_target/release/eve-idfon-voice"
 if [ ! -s "$key" ] || [ ! -s "$contact_file" ]; then
   echo "radio-admit: $instance has no identity yet — run it once first:" >&2
   echo "  scripts/radio-serve.sh '$station'" >&2

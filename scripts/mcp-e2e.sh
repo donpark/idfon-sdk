@@ -12,9 +12,10 @@ set -eu
 # PASS requires every check to pass; exits non-zero on the first failure.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$root/scripts/lib/core.sh"
 cd "$root"
 
-cargo build --release -p idfon-mcp
+core_cargo build --release -p idfon-mcp
 
 work=$(mktemp -d /tmp/idfon-mcp.XXXXXX)
 pids=""
@@ -27,7 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-BIN="$root/target/release/idfon-mcp"
+BIN="$core_target/release/idfon-mcp"
 # Fixed hex keys: stable identity across runs, and this covers --key-file.
 printf '%064d' 1 > "$work/serve.key"
 printf '%064d' 2 > "$work/connect.key"

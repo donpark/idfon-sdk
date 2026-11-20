@@ -1,4 +1,8 @@
 [build]
+# Share idfon-core's target dir: one build cache for both workspaces, and the
+# CLI finds idfond and libiroh_c_ffi next to itself (it auto-spawns the
+# daemon from its own directory). Relative to this file's parent dir.
+target-dir = "../idfon-core/target"
 # Allow (not deny) unexpected_cfgs: the legacy objc/cocoa crates in the
 # nokhwa camera stack use the old #[cfg(feature = "cargo-clippy")] idiom
 # ~300x per pass. One value for every build keeps cargo fingerprints stable.
