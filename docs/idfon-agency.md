@@ -78,7 +78,7 @@ submitter (chat / Slack / MCP pipeline / CLI)
   and availability; the agency hands out jobs. Device churn is absorbed by
   leases.
 - **No daemon in the compute path**: agents embed their own `idfon-core`
-  endpoint (`IrohTransport::bind_with_key`). Rule from `docs/mcp-transport.md`
+  endpoint (`IrohTransport::builder()`). Rule from `docs/mcp-transport.md`
   holds: a daemon is needed iff multiple local processes must share one
   identity — agents don't.
 

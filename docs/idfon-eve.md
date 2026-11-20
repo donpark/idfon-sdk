@@ -385,7 +385,7 @@ conversation channel:
 | output | spliced to a child MCP server | forwarded to the Eve channel |
 
 `idfon-core` already exposes everything the holder needs without a daemon:
-`IrohTransport::bind_with_key`, `serve(handler)`, `send`, `verify_message`,
+`IrohTransport::builder()`, `serve(handler)`, `send`, `verify_message`,
 `CapabilityTicket::decode` (signature-checked by construction), and
 `open_bi_stream(target, alpn)` for side channels (live media).
 

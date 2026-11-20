@@ -138,6 +138,13 @@ async function deliverReply(sessionId: string, target: SessionTarget, message: s
   await delivery;
 }
 
+// The Eve session a turn or an answer belongs to: one session per room
+// (every member shares it), else one per peer. Every route uses this, so an
+// input answer reaches the same session as the turn that asked.
+function sessionAddress(source: { conversation?: string | null; peer_id: string }): string {
+  return source.conversation || source.peer_id;
+}
+
 export default defineChannel({
   turnPolicy: "queue",
   audience({ caller }) {
@@ -168,7 +175,7 @@ export default defineChannel({
       if (completeTurn.text.startsWith("IDFON-SESSION/1\n")) {
         const action = /(?:^|\n)action=([a-z]+)/.exec(completeTurn.text)?.[1];
         if (action === "rotate" || action === "clear") {
-          const address = completeTurn.conversation || completeTurn.peer_id;
+          const address = sessionAddress(completeTurn);
           const session = await resolveSession(address);
           if (session) await session.clear();
           return Response.json({ session: "cleared" });
@@ -176,7 +183,7 @@ export default defineChannel({
       }
       // A room is one Eve session shared by all senders. Keep 1:1 sessions
       // keyed by peer id, while a room session is keyed by conversation.
-      const address = completeTurn.conversation || completeTurn.peer_id;
+      const address = sessionAddress(completeTurn);
       const name = attachmentName(completeTurn.text);
       const message = completeTurn.blob_ticket
         ? [
@@ -280,9 +287,7 @@ export default defineChannel({
       } catch {
         return Response.json({ error: "invalid input responses" }, { status: 400 });
       }
-      const address = input.conversation
-        ? `${input.peer_id}:${input.conversation}`
-        : input.peer_id;
+      const address = sessionAddress({ conversation: input.conversation, peer_id: input.peer_id });
       await from(address).respond(responses, {
         auth: authFor({
           peer_id: input.peer_id,
