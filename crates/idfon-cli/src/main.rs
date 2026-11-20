@@ -25,7 +25,9 @@ use idfon_client::{Client, ClientError};
 use idfon_protocol::{
     encode_json,
     vcf::{contact_ticket_vcard, vcard_contact_tickets},
-    ContactTicket, Peer, Request, Response, ResponseBody, PROTOCOL_VERSION,
+    rpc::{self, Method},
+    ContactTicket, DeliveryMode, DeliveryPolicy, ErrorCode, Peer, Request, Response,
+    ResponseBody,
 };
 use serde_json::{json, Value};
 
@@ -714,12 +716,7 @@ fn run() -> io::Result<()> {
             // No auto-start here: shutting down a daemon we just spawned is a no-op.
             let mut client = Client::connect(socket)
                 .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "daemon is not running"))?;
-            let request = Request {
-                version: PROTOCOL_VERSION,
-                id: "cli-shutdown".into(),
-                method: "daemon.shutdown".into(),
-                params: json!({}),
-            };
+            let request = Request::call("cli-shutdown", &rpc::DaemonShutdown {});
             let response = client
                 .request(&encode_json(&request).map_err(io::Error::other)?)
                 .map_err(io::Error::other)?
@@ -754,23 +751,15 @@ fn run() -> io::Result<()> {
             let path = std::fs::canonicalize(&args.file).map_err(|error| {
                 io::Error::new(error.kind(), format!("cannot read {}: {error}", args.file))
             })?;
-            let mut params = json!({"path": path.display().to_string()});
-            if let Some(name) = args.name {
-                params["name"] = json!(name);
-            }
-            if let Some(url) = args.url {
-                params["url"] = json!(url);
-            }
-            if let Some(token) = args.token {
-                params["token"] = json!(token);
-            }
-            if let Some(seconds) = args.expires_in {
-                params["expires_in"] = json!(seconds);
-            }
-            if args.permanent {
-                params["permanent"] = json!(true);
-            }
-            let response = send_rpc(socket, "files.publish", params, identity, false)?;
+            let params = rpc::FilePublish {
+                path: path.display().to_string(),
+                name: args.name,
+                url: args.url,
+                token: args.token,
+                expires_in: args.expires_in,
+                permanent: args.permanent,
+            };
+            let response = call(socket, &params, identity, false)?;
             if json {
                 println!(
                     "{}",
@@ -806,21 +795,15 @@ fn run() -> io::Result<()> {
         }
         Command::Gateway(GatewayCmd::Start) => cmd_gateway_start(socket, identity, json),
         Command::Gateway(GatewayCmd::Stop) => finish(
-            send_rpc(socket, "gateway.stop", json!({}), identity, false)?,
+            call(socket, &rpc::GatewayStop {}, identity, false)?,
             json,
         ),
         Command::Provider(ProviderCmd::Start { root }) => finish(
-            send_rpc(
-                socket,
-                "provider.start",
-                json!({"root": root}),
-                identity,
-                false,
-            )?,
+            call(socket, &rpc::ProviderStart { root }, identity, false)?,
             json,
         ),
         Command::Provider(ProviderCmd::Stop) => finish(
-            send_rpc(socket, "provider.stop", json!({}), identity, false)?,
+            call(socket, &rpc::ProviderStop {}, identity, false)?,
             json,
         ),
         Command::Fetch(args) => {
@@ -860,27 +843,26 @@ fn run() -> io::Result<()> {
             identity,
         ),
         Command::Wait(args) => {
-            let response = send_rpc(
-                socket,
-                "wait",
-                json!({"follow": false, "after": args.after, "type": args.event_type, "timeout_ms": args.timeout_ms}),
-                identity,
-                cli.stdin_json,
-            )?;
+            let params = rpc::EventWait {
+                after: args.after,
+                event_type: args.event_type,
+                timeout_ms: args.timeout_ms,
+                ..Default::default()
+            };
+            let response = call(socket, &params, identity, cli.stdin_json)?;
             finish(response, json)
         }
         Command::Operation(OperationCmd::Wait {
             operation_id,
             timeout_ms,
         }) => {
-            let mut params = json!({"operation_id": operation_id, "timeout_ms": timeout_ms});
-            inject_identity(&mut params, identity);
-            let request = Request {
-                version: PROTOCOL_VERSION,
-                id: "cli-1".into(),
-                method: "operation.wait".into(),
-                params,
-            };
+            let request = request_for(
+                &rpc::OperationWait {
+                    operation_id,
+                    timeout_ms,
+                },
+                identity,
+            );
             let mut client = connect_or_start_daemon(socket)?;
             let payload = encode_json(&request).map_err(io::Error::other)?;
             let mut response = read_json(&mut client, &payload)?;
@@ -904,46 +886,28 @@ fn run() -> io::Result<()> {
             finish(response, json)
         }
         Command::Status => finish(
-            send_rpc(socket, "status", json!({}), identity, cli.stdin_json)?,
+            call(socket, &rpc::DaemonStatus {}, identity, cli.stdin_json)?,
             json,
         ),
         Command::Doctor => cmd_doctor(socket, identity, json, cli.stdin_json),
         Command::Identity(IdentityCmd::List) => finish(
-            send_rpc(socket, "identities", json!({}), identity, cli.stdin_json)?,
+            call(socket, &rpc::IdentityList {}, identity, cli.stdin_json)?,
             json,
         ),
         Command::Identity(IdentityCmd::Use { name }) => finish(
-            send_rpc(
-                socket,
-                "identity.use",
-                json!({"name": name}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::IdentityUse { name }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Identity(IdentityCmd::Create { name }) => finish(
-            send_rpc(
-                socket,
-                "identity.create",
-                json!({"name": name}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::IdentityCreate { name }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Identity(IdentityCmd::Delete { name }) => finish(
-            send_rpc(
-                socket,
-                "identity.delete",
-                json!({"name": name}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::IdentityDelete { name }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Peer(PeerCmd::List) => finish(
-            send_rpc(socket, "peers", json!({}), identity, cli.stdin_json)?,
+            call(socket, &rpc::PeerList {}, identity, cli.stdin_json)?,
             json,
         ),
         Command::Peer(PeerCmd::Add {
@@ -955,10 +919,19 @@ fn run() -> io::Result<()> {
             call_mode,
             mcp_ticket,
         }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "peer.add",
-                json!({"ref": peer_ref, "id": account_id.or(peer_ref), "name": name, "endpoint_id": endpoint_id, "endpoint_addr": endpoint_addr, "aliases": [], "call_mode": call_mode, "mcp_ticket": mcp_ticket}),
+                &rpc::PeerAdd {
+                    id: account_id.or_else(|| peer_ref.clone()),
+                    peer: peer_ref,
+                    name,
+                    endpoint_id,
+                    endpoint_addr,
+                    aliases: Some(vec![]),
+                    call_mode,
+                    mcp_ticket,
+                    contact_ticket: None,
+                },
                 identity,
                 cli.stdin_json,
             )?,
@@ -971,17 +944,24 @@ fn run() -> io::Result<()> {
             endpoint_addr,
             call_mode,
         }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "peer.update",
-                json!({"ref": peer_ref, "id": peer_ref, "name": name, "endpoint_id": endpoint_id, "endpoint_addr": endpoint_addr, "aliases": [], "call_mode": call_mode}),
+                &rpc::PeerUpdate {
+                    id: Some(peer_ref.clone()),
+                    peer: peer_ref,
+                    name,
+                    endpoint_id,
+                    endpoint_addr,
+                    aliases: Some(vec![]),
+                    call_mode,
+                },
                 identity,
                 cli.stdin_json,
             )?,
             json,
         ),
         Command::Peer(PeerCmd::Device { command }) => {
-            let (method, params) = match command {
+            let response = match command {
                 PeerDeviceCmd::Add {
                     peer_ref,
                     endpoint_id,
@@ -989,10 +969,19 @@ fn run() -> io::Result<()> {
                     label,
                     device_class,
                     capabilities,
-                } => (
-                    "peer.device.add",
-                    json!({"ref": peer_ref, "endpoint_id": endpoint_id, "endpoint_addr": endpoint_addr, "label": label, "device_class": device_class, "capabilities": capabilities}),
-                ),
+                } => call(
+                    socket,
+                    &rpc::PeerDeviceAdd {
+                        peer: peer_ref,
+                        endpoint_id,
+                        endpoint_addr,
+                        label,
+                        device_class,
+                        capabilities,
+                    },
+                    identity,
+                    cli.stdin_json,
+                )?,
                 PeerDeviceCmd::Update {
                     peer_ref,
                     endpoint_id,
@@ -1000,79 +989,62 @@ fn run() -> io::Result<()> {
                     label,
                     device_class,
                     capabilities,
-                } => (
-                    "peer.device.update",
-                    json!({"ref": peer_ref, "endpoint_id": endpoint_id, "endpoint_addr": endpoint_addr, "label": label, "device_class": device_class, "capabilities": capabilities}),
-                ),
+                } => call(
+                    socket,
+                    &rpc::PeerDeviceUpdate {
+                        peer: peer_ref,
+                        endpoint_id,
+                        endpoint_addr,
+                        label,
+                        device_class,
+                        capabilities,
+                    },
+                    identity,
+                    cli.stdin_json,
+                )?,
                 PeerDeviceCmd::Remove {
                     peer_ref,
                     endpoint_id,
-                } => (
-                    "peer.device.remove",
-                    json!({"ref": peer_ref, "endpoint_id": endpoint_id}),
-                ),
+                } => call(
+                    socket,
+                    &rpc::PeerDeviceRemove {
+                        peer: peer_ref,
+                        endpoint_id,
+                    },
+                    identity,
+                    cli.stdin_json,
+                )?,
             };
-            finish(
-                send_rpc(socket, method, params, identity, cli.stdin_json)?,
-                json,
-            )
+            finish(response, json)
         }
         Command::Peer(PeerCmd::Remove { peer_ref }) => finish(
-            send_rpc(
-                socket,
-                "peer.remove",
-                json!({"ref": peer_ref}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::PeerRemove { peer: peer_ref }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Peer(PeerCmd::Resolve { peer_ref }) => finish(
-            send_rpc(
-                socket,
-                "peer.resolve",
-                json!({"ref": peer_ref}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::PeerResolve { peer: peer_ref }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Peer(PeerCmd::Show { peer_ref }) => finish(
-            send_rpc(
-                socket,
-                "peer.show",
-                json!({"ref": peer_ref}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::PeerShow { peer: peer_ref }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Peer(PeerCmd::Status { peer_ref }) => finish(
-            send_rpc(
-                socket,
-                "peer.status",
-                json!({"ref": peer_ref}),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::PeerStatus { peer: peer_ref }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Room(command) => match command {
             RoomCmd::Create { id, name, members, keep_call_open } => {
-                let mut params = json!({"id": id, "name": name});
-                if keep_call_open {
-                    params["call_auto_close"] = json!(false);
-                }
-                if !members.is_empty() {
-                    params["members"] = json!(members);
-                }
-                finish(
-                    send_rpc(socket, "room.create", params, identity, cli.stdin_json)?,
-                    json,
-                )
+                let params = rpc::RoomCreate {
+                    id,
+                    name,
+                    members,
+                    call_auto_close: keep_call_open.then_some(false),
+                };
+                finish(call(socket, &params, identity, cli.stdin_json)?, json)
             }
             RoomCmd::List => finish(
-                send_rpc(socket, "room.list", json!({}), identity, cli.stdin_json)?,
+                call(socket, &rpc::RoomList {}, identity, cli.stdin_json)?,
                 json,
             ),
             RoomCmd::Send {
@@ -1095,10 +1067,16 @@ fn run() -> io::Result<()> {
                     )
                 });
                 finish(
-                    send_rpc(
+                    call(
                         socket,
-                        "room.send",
-                        json!({"room": room, "text": text, "idempotency_key": key, "capability_ticket": capability_ticket.map(Value::String), "retries": retries, "delivery": {"mode": delivery, "endpoint_ids": endpoint_ids, "device_class": device_class}}),
+                        &rpc::RoomSend {
+                            room,
+                            text,
+                            idempotency_key: key,
+                            capability_ticket,
+                            retries,
+                            delivery: Some(delivery_policy(&delivery, endpoint_ids, device_class)),
+                        },
                         identity,
                         cli.stdin_json,
                     )?,
@@ -1106,25 +1084,26 @@ fn run() -> io::Result<()> {
                 )
             }
             RoomCmd::Leave { room } => finish(
-                send_rpc(
-                    socket,
-                    "room.leave",
-                    json!({"room": room}),
-                    identity,
-                    cli.stdin_json,
-                )?,
+                call(socket, &rpc::RoomLeave { room }, identity, cli.stdin_json)?,
                 json,
             ),
             RoomCmd::Call { command } => {
-                let (method, params) = match command {
-                    RoomCallCmd::Join { room, ticket, addr, audio_codec } => (
-                        "room.call.join",
-                        json!({"room": room, "ticket": ticket, "addr": addr, "audio_codec": audio_codec}),
-                    ),
-                    RoomCallCmd::Leave { room } => ("room.call.leave", json!({"room": room})),
-                    RoomCallCmd::Status { room } => ("room.call.status", json!({"room": room})),
+                let stdin_json = cli.stdin_json;
+                let response = match command {
+                    RoomCallCmd::Join { room, ticket, addr, audio_codec } => call(
+                        socket,
+                        &rpc::RoomCallJoin { room, ticket, addr, audio_codec },
+                        identity,
+                        stdin_json,
+                    )?,
+                    RoomCallCmd::Leave { room } => {
+                        call(socket, &rpc::RoomCallLeave { room }, identity, stdin_json)?
+                    }
+                    RoomCallCmd::Status { room } => {
+                        call(socket, &rpc::RoomCallStatus { room }, identity, stdin_json)?
+                    }
                 };
-                finish(send_rpc(socket, method, params, identity, cli.stdin_json)?, json)
+                finish(response, json)
             }
         },
         Command::Send(args) => {
@@ -1134,11 +1113,19 @@ fn run() -> io::Result<()> {
                         // 1:1 session-scoped stream to the peer; blocks until
                         // they hang up (or --seconds). No ticket exists.
                         let file = resolve_stream_file(args.file.as_ref())?;
-                        let mut params = json!({"to": peer, "file": file, "video": args.video, "relay": !args.no_relay, "delivery": {"mode": args.delivery, "endpoint_ids": args.endpoint_ids, "device_class": args.device_class}});
-                        if let Some(seconds) = args.seconds {
-                            params["seconds"] = seconds.into();
-                        }
-                        let response = ipc(socket, "media.live.dial", params, identity)?;
+                        let params = rpc::LiveDial {
+                            peer: peer.to_owned(),
+                            file,
+                            video: args.video,
+                            relay: !args.no_relay,
+                            seconds: args.seconds,
+                            delivery: Some(delivery_policy(
+                                &args.delivery,
+                                args.endpoint_ids.clone(),
+                                args.device_class.clone(),
+                            )),
+                        };
+                        let response = call_plain(socket, &params, identity)?;
                         if !response.ok {
                             return Err(io::Error::other(request_error(&response)));
                         }
@@ -1154,17 +1141,12 @@ fn run() -> io::Result<()> {
                         Ok(())
                     }
                     (None, true, _) => finish(
-                        send_rpc(
-                            socket,
-                            "media.live.publishers",
-                            json!({}),
-                            identity,
-                            cli.stdin_json,
-                        )?,
+                        call(socket, &rpc::LiveList {}, identity, cli.stdin_json)?,
                         json,
                     ),
                     (None, false, Some(id)) => {
-                        let response = ipc(socket, "media.live.stop", json!({"id": id}), identity)?;
+                        let response =
+                            call_plain(socket, &rpc::LiveStop { id: id.to_owned() }, identity)?;
                         if !response.ok {
                             return Err(io::Error::other(request_error(&response)));
                         }
@@ -1182,12 +1164,14 @@ fn run() -> io::Result<()> {
                         // Broadcast publish: prints the live ticket.
                         if args.video {
                             let file = resolve_stream_file(args.file.as_ref())?;
-                            let mut params =
-                                json!({"file": file, "video": true, "relay": !args.no_relay});
-                            if let Some(name) = args.name.as_deref() {
-                                params["name"] = name.into();
-                            }
-                            let response = ipc(socket, "media.live.publish", params, identity)?;
+                            let params = rpc::LivePublish {
+                                file,
+                                video: true,
+                                relay: !args.no_relay,
+                                name: args.name.clone(),
+                                ..Default::default()
+                            };
+                            let response = call_plain(socket, &params, identity)?;
                             if !response.ok {
                                 return Err(io::Error::other(request_error(&response)));
                             }
@@ -1202,11 +1186,14 @@ fn run() -> io::Result<()> {
                             return Ok(());
                         }
                         let file = resolve_stream_file(args.file.as_ref())?;
-                        let mut params = json!({"file": file, "loop": args.loop_playback, "relay": !args.no_relay});
-                        if let Some(name) = args.name.as_deref() {
-                            params["name"] = name.into();
-                        }
-                        let response = ipc(socket, "media.live.publish", params, identity)?;
+                        let params = rpc::LivePublish {
+                            file,
+                            loop_playback: args.loop_playback,
+                            relay: !args.no_relay,
+                            name: args.name.clone(),
+                            ..Default::default()
+                        };
+                        let response = call_plain(socket, &params, identity)?;
                         if !response.ok {
                             return Err(io::Error::other(request_error(&response)));
                         }
@@ -1237,20 +1224,21 @@ fn run() -> io::Result<()> {
             operation_id,
             timeout_ms,
         }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "operation.get",
-                json!({"operation_id": operation_id, "timeout_ms": timeout_ms}),
+                &rpc::OperationGet {
+                    operation_id,
+                    timeout_ms,
+                },
                 identity,
                 cli.stdin_json,
             )?,
             json,
         ),
         Command::Operation(OperationCmd::Cancel { operation_id }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "operation.cancel",
-                json!({"operation_id": operation_id}),
+                &rpc::OperationCancel { operation_id },
                 identity,
                 cli.stdin_json,
             )?,
@@ -1260,10 +1248,12 @@ fn run() -> io::Result<()> {
             subject,
             capability,
         }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "access.check",
-                json!({"subject": subject, "capability": capability}),
+                &rpc::AccessCheck {
+                    peer: subject,
+                    capability,
+                },
                 identity,
                 cli.stdin_json,
             )?,
@@ -1273,50 +1263,37 @@ fn run() -> io::Result<()> {
             subject,
             capability,
         }) => finish(
-            send_rpc(
+            call(
                 socket,
-                "access.grant",
-                json!({"subject": subject, "capability": capability}),
+                &rpc::AccessGrant {
+                    peer: subject,
+                    capability,
+                },
                 identity,
                 cli.stdin_json,
             )?,
             json,
         ),
         Command::Mcp(McpCmd::Listen { to }) => finish(
-            send_rpc(
-                socket,
-                "mcp.listen",
-                json!({ "to": to }),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::McpListen { peer: to }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Mcp(McpCmd::Configure { command }) => finish(
-            send_rpc(
-                socket,
-                "mcp.configure",
-                json!({ "command": command }),
-                identity,
-                cli.stdin_json,
-            )?,
+            call(socket, &rpc::McpConfigure { command }, identity, cli.stdin_json)?,
             json,
         ),
         Command::Access(AccessCmd::Ticket(args)) => {
-            let params = json!({
-                "subject": args.subject,
-                "capabilities": [args.capability.clone().unwrap_or_else(|| "message.receive".into())],
-                "expires_at": args.expires_at,
-                "conversation": args.conversation,
-                "path_scope": args.path_scope,
-            });
-            let response = send_rpc(
-                socket,
-                "capability.ticket",
-                params,
-                identity,
-                cli.stdin_json,
-            )?;
+            let params = rpc::AccessTicket {
+                peer: args.subject,
+                capabilities: vec![args
+                    .capability
+                    .clone()
+                    .unwrap_or_else(|| "message.receive".into())],
+                expires_at: args.expires_at,
+                conversation: args.conversation,
+                path_scope: args.path_scope,
+            };
+            let response = call(socket, &params, identity, cli.stdin_json)?;
             if !json {
                 let ticket = match &response.body {
                     ResponseBody::Success { result, .. } => {
@@ -1346,7 +1323,7 @@ fn cmd_contact_export(
 ) -> io::Result<()> {
     let ticket = match peer_ref {
         None => {
-            let response = send_rpc(socket, "contact.ticket", json!({}), identity, false)?;
+            let response = call(socket, &rpc::ContactTicket {}, identity, false)?;
             let result = match response.body {
                 ResponseBody::Success { result, .. } => result,
                 _ => return finish(response, json),
@@ -1354,7 +1331,7 @@ fn cmd_contact_export(
             serde_json::from_value(result).map_err(io::Error::other)?
         }
         Some(reference) => {
-            let response = send_rpc(socket, "peers", json!({}), identity, false)?;
+            let response = call(socket, &rpc::PeerList {}, identity, false)?;
             let result = match response.body {
                 ResponseBody::Success { result, .. } => result,
                 _ => return finish(response, json),
@@ -1406,13 +1383,12 @@ fn cmd_contact_import(
     };
     for ticket in vcard_contact_tickets(&text).map_err(io::Error::other)? {
         let name = ticket.label.clone();
-        let response = send_rpc(
-            socket,
-            "peer.add",
-            json!({"contact_ticket": ticket, "name": name}),
-            identity,
-            false,
-        )?;
+        let params = rpc::PeerAdd {
+            contact_ticket: Some(ticket),
+            name,
+            ..Default::default()
+        };
+        let response = call(socket, &params, identity, false)?;
         finish(response, json)?;
     }
     Ok(())
@@ -1439,7 +1415,7 @@ fn finish(response: Response, json: bool) -> io::Result<()> {
 /// Binds the identity's loopback gateway and prints URL + token (or the full
 /// envelope with `--json`).
 fn cmd_gateway_start(socket: &str, identity: Option<&str>, json: bool) -> io::Result<()> {
-    let response = send_rpc(socket, "gateway.start", json!({}), identity, false)?;
+    let response = call(socket, &rpc::GatewayStart::default(), identity, false)?;
     let result = match &response.body {
         ResponseBody::Success { result, .. } => result.clone(),
         _ => return finish(response, json),
@@ -1464,13 +1440,10 @@ fn cmd_fetch(
     use std::io::Write as _;
 
     let (account, path) = split_idfon_url(url)?;
-    let response = send_rpc(
-        socket,
-        "gateway.start",
-        json!({"prefer": prefer}),
-        identity,
-        false,
-    )?;
+    let params = rpc::GatewayStart {
+        prefer: Some(prefer.to_owned()),
+    };
+    let response = call(socket, &params, identity, false)?;
     let result = match &response.body {
         ResponseBody::Success { result, .. } => result,
         _ => return finish(response, false),
@@ -1500,13 +1473,11 @@ fn cmd_web_open(socket: &str, target: &str, identity: Option<&str>) -> io::Resul
     if reference.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing ref"));
     }
-    let response = send_rpc(
-        socket,
-        "web.url",
-        json!({"ref": reference, "path": path}),
-        identity,
-        false,
-    )?;
+    let params = rpc::WebUrl {
+        peer: reference,
+        path,
+    };
+    let response = call(socket, &params, identity, false)?;
     match &response.body {
         ResponseBody::Success { result, .. } => {
             println!("{}", result["url"].as_str().unwrap_or_default());
@@ -1563,40 +1534,101 @@ fn http_get(addr: &str, path: &str, token: &str) -> io::Result<(u16, Vec<u8>)> {
     Ok((status, raw[split..].to_vec()))
 }
 
-fn inject_identity(params: &mut Value, identity: Option<&str>) {
-    if let Some(identity) = identity {
-        if let Some(params) = params.as_object_mut() {
-            params
+/// Serializes typed params and fills `identity` from `--identity` when the
+/// params don't set it.
+fn params_for<M: Method>(method: &M, identity: Option<&str>) -> Value {
+    let mut params = serde_json::to_value(method).unwrap_or_else(|_| json!({}));
+    if let (Some(identity), Some(object)) = (identity, params.as_object_mut()) {
+        object
+            .entry("identity")
+            .or_insert(Value::String(identity.into()));
+    }
+    params
+}
+
+/// A request for `method`, with `--identity` applied.
+fn request_for<M: Method>(method: &M, identity: Option<&str>) -> Request {
+    let mut request = Request::call("cli-1", method);
+    request.params = params_for(method, identity);
+    request
+}
+
+/// One RPC round trip with typed params, `--identity`, and the
+/// `--stdin-json` escape hatch (replaces the params with stdin's JSON).
+fn call<M: Method>(
+    socket: &str,
+    method: &M,
+    identity: Option<&str>,
+    stdin_json: bool,
+) -> io::Result<Response> {
+    let mut request = request_for(method, identity);
+    if stdin_json {
+        request.params = serde_json::from_reader(std::io::stdin()).map_err(io::Error::other)?;
+        if let (Some(identity), Some(object)) = (identity, request.params.as_object_mut()) {
+            object
                 .entry("identity")
                 .or_insert(Value::String(identity.into()));
         }
     }
-}
-
-/// One generic RPC round trip with identity injection and the `--stdin-json`
-/// params escape hatch. Returns the validated protocol `Response`.
-fn send_rpc(
-    socket: &str,
-    method: &str,
-    mut params: Value,
-    identity: Option<&str>,
-    stdin_json: bool,
-) -> io::Result<Response> {
-    if stdin_json {
-        params = serde_json::from_reader(std::io::stdin()).map_err(io::Error::other)?;
-    }
-    inject_identity(&mut params, identity);
-    let request = Request {
-        version: PROTOCOL_VERSION,
-        id: "cli-1".into(),
-        method: method.into(),
-        params,
-    };
     let mut client = connect_or_start_daemon(socket)?;
-    read_json(
+    let response = read_json(
         &mut client,
         &encode_json(&request).map_err(io::Error::other)?,
-    )
+    )?;
+    if let ResponseBody::Failure { error, .. } = &response.body {
+        if error.code == ErrorCode::UnknownMethod {
+            eprintln!(
+                "hint: `{}` is unknown to the running daemon, which may be older than \
+                 this CLI; run `idfon shutdown` and retry",
+                request.method
+            );
+        }
+    }
+    Ok(response)
+}
+
+/// `call` without `--stdin-json`, for internal steps of a command.
+fn call_plain<M: Method>(
+    socket: &str,
+    method: &M,
+    identity: Option<&str>,
+) -> io::Result<Response> {
+    call(socket, method, identity, false)
+}
+
+/// Builds a delivery policy from the `--delivery`, `--endpoint-id` and
+/// `--device-class` flags (clap restricts `mode` to the three values).
+fn delivery_policy(
+    mode: &str,
+    endpoint_ids: Vec<String>,
+    device_class: Option<String>,
+) -> DeliveryPolicy {
+    DeliveryPolicy {
+        mode: match mode {
+            "one" => DeliveryMode::One,
+            "all" => DeliveryMode::All,
+            _ => DeliveryMode::Failover,
+        },
+        endpoint_ids,
+        device_class,
+    }
+}
+
+/// `--out`, or a fresh temp file `idfon-<tag>-<nanos>.<ext>`.
+fn out_path(out: Option<&String>, tag: &str, ext: &str) -> String {
+    match out {
+        Some(path) => path.clone(),
+        None => std::env::temp_dir()
+            .join(format!(
+                "idfon-{tag}-{}.{ext}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock before epoch")
+                    .as_nanos()
+            ))
+            .display()
+            .to_string(),
+    }
 }
 
 fn cmd_doctor(
@@ -1605,8 +1637,8 @@ fn cmd_doctor(
     json: bool,
     stdin_json: bool,
 ) -> io::Result<()> {
-    let status = send_rpc(socket, "status", json!({}), identity, stdin_json)?;
-    let peers = send_rpc(socket, "peers", json!({}), identity, stdin_json)?;
+    let status = call(socket, &rpc::DaemonStatus {}, identity, stdin_json)?;
+    let peers = call(socket, &rpc::PeerList {}, identity, stdin_json)?;
     let status_result = match &status.body {
         ResponseBody::Success { result, .. } => result,
         _ => return finish(status, json),
@@ -1672,14 +1704,15 @@ fn cmd_events(
     json: bool,
     identity: Option<&str>,
 ) -> io::Result<()> {
-    let mut params = json!({"follow": follow, "after": after, "type": event_type});
-    inject_identity(&mut params, identity);
-    let request = Request {
-        version: PROTOCOL_VERSION,
-        id: "cli-1".into(),
-        method: "events".into(),
-        params,
-    };
+    let request = request_for(
+        &rpc::EventList {
+            follow,
+            after,
+            event_type,
+            ..Default::default()
+        },
+        identity,
+    );
     let mut client = connect_or_start_daemon(socket)?;
     let payload = encode_json(&request).map_err(io::Error::other)?;
     let mut response = read_json(&mut client, &payload)?;
@@ -1836,29 +1869,6 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
     }
 }
 
-fn ipc(
-    socket: &str,
-    method: &str,
-    mut params: Value,
-    identity: Option<&str>,
-) -> io::Result<Response> {
-    if let Some(identity) = identity {
-        params["identity"] = identity.into();
-    }
-    let request = Request {
-        version: PROTOCOL_VERSION,
-        id: "cli-1".into(),
-        method: method.into(),
-        params,
-    };
-    let mut client = connect_or_start_daemon(socket)?;
-    client
-        .request(&encode_json(&request).map_err(io::Error::other)?)
-        .map_err(io::Error::other)?
-        .json()
-        .map_err(io::Error::other)
-}
-
 /// Infers a mime type from the file extension for common audio/video types.
 fn guess_mime(path: &str) -> Option<String> {
     let ext = std::path::Path::new(path)
@@ -1921,12 +1931,14 @@ fn put_data(
         .cloned()
         .or_else(|| file.and_then(|path| guess_mime(path)));
     let put = |chunk: &[u8], append: bool, finish: bool| {
-        let mut params =
-            json!({"resource_id": resource_id, "bytes": chunk, "append": append, "finish": finish});
-        if let Some(ref mime) = mime {
-            params["mime"] = mime.clone().into();
-        }
-        ipc(socket, "media.resource.put", params, identity)
+        let params = rpc::BlobPut {
+            resource_id: resource_id.clone(),
+            bytes: chunk.to_vec(),
+            append,
+            finish,
+            mime: mime.clone(),
+        };
+        call_plain(socket, &params, identity)
     };
     let mut response = None;
     let mut offset = 0;
@@ -2020,12 +2032,13 @@ fn fetch_to(
     };
     let mut offset = 0usize;
     loop {
-        let response = ipc(
-            socket,
-            "media.resource.fetch",
-            json!({"resource_id": resource_id, "blob_ticket": ticket, "offset": offset, "length": CHUNK}),
-            identity,
-        )?;
+        let params = rpc::BlobGet {
+            resource_id: resource_id.clone(),
+            blob_ticket: ticket.to_owned(),
+            offset: Some(offset as u64),
+            length: Some(CHUNK as u64),
+        };
+        let response = call_plain(socket, &params, identity)?;
         if !response.ok {
             return Err(io::Error::other(request_error(&response)));
         }
@@ -2081,16 +2094,21 @@ fn send_payload(
                     .as_nanos()
             )
         });
-        finish(
-            send_rpc(
-                socket,
-                "message.send",
-                json!({"to": peer, "text": args.text, "idempotency_key": key, "conversation": args.conversation, "context": args.context, "capability_ticket": args.capability_ticket.clone().map(Value::String), "retries": args.retries, "delivery": {"mode": args.delivery, "endpoint_ids": args.endpoint_ids, "device_class": args.device_class}}),
-                identity,
-                stdin_json,
-            )?,
-            json,
-        )
+        let params = rpc::MessageSend {
+            peer: peer.to_owned(),
+            text: args.text.clone(),
+            idempotency_key: key,
+            conversation: args.conversation.clone(),
+            context: args.context.clone(),
+            capability_ticket: args.capability_ticket.clone(),
+            retries: args.retries,
+            delivery: Some(delivery_policy(
+                &args.delivery,
+                args.endpoint_ids.clone(),
+                args.device_class.clone(),
+            )),
+        };
+        finish(call(socket, &params, identity, stdin_json)?, json)
     }
 }
 
@@ -2109,23 +2127,24 @@ fn cmd_send_data(
     // The ticket is content-addressed, so this key is stable across retries
     // with the same content and unique across different content.
     let idempotency_key = format!("idfon-data-{ticket}");
-    let response = ipc(
-        socket,
-        "message.send",
-        json!({"to": peer, "text": text, "idempotency_key": idempotency_key, "retries": retries}),
-        identity,
-    )?;
+    let params = rpc::MessageSend {
+        peer: peer.to_owned(),
+        text: Some(text),
+        idempotency_key,
+        retries,
+        ..Default::default()
+    };
+    let response = call_plain(socket, &params, identity)?;
     if !response.ok {
         return Err(io::Error::other(request_error(&response)));
     }
     let operation_id = result_str(&response, "operation_id");
     loop {
-        let response = ipc(
-            socket,
-            "operation.wait",
-            json!({"operation_id": operation_id}),
-            identity,
-        )?;
+        let params = rpc::OperationWait {
+            operation_id: operation_id.clone(),
+            timeout_ms: None,
+        };
+        let response = call_plain(socket, &params, identity)?;
         let status = match &response.body {
             ResponseBody::Success { result, .. } => result
                 .get("operation")
@@ -2183,12 +2202,11 @@ fn cmd_recv(
     // retained events means no `after` filter (a "cur_0" sentinel would be
     // rejected as CursorTooOld — it sorts below the first cursor).
     let mut cursor: Option<String> = None;
-    if let Ok(response) = ipc(
-        socket,
-        "events",
-        json!({"type": "message.received"}),
-        identity,
-    ) {
+    let baseline = rpc::EventList {
+        event_type: Some("message.received".into()),
+        ..Default::default()
+    };
+    if let Ok(response) = call_plain(socket, &baseline, identity) {
         if let ResponseBody::Success { result, .. } = &response.body {
             cursor = result
                 .get("events")
@@ -2205,12 +2223,13 @@ fn cmd_recv(
             return Err(io::Error::other("recv timed out: no data message arrived"));
         }
         let wait_ms = remaining.as_millis().min(30_000) as u64;
-        let response = ipc(
-            socket,
-            "wait",
-            json!({"type": "message.received", "after": cursor, "timeout_ms": wait_ms}),
-            identity,
-        )?;
+        let params = rpc::EventWait {
+            event_type: Some("message.received".into()),
+            after: cursor.clone(),
+            timeout_ms: Some(wait_ms),
+            peer: None,
+        };
+        let response = call_plain(socket, &params, identity)?;
         if !response.ok {
             return Err(io::Error::other(request_error(&response)));
         }
@@ -2312,27 +2331,15 @@ fn cmd_listen(
     identity: Option<&str>,
 ) -> io::Result<()> {
     let ext = if video { "h264" } else { "wav" };
-    let mut params = json!({"ticket": ticket, "relay": relay, "video": video});
-    if let Some(seconds) = seconds {
-        params["seconds"] = seconds.into();
-    }
-    if let Some(quality) = quality {
-        params["quality"] = quality.into();
-    }
-    let temp;
-    if let Some(path) = out {
-        params["out"] = path.clone().into();
-    } else {
-        temp = std::env::temp_dir().join(format!(
-            "idfon-listen-{}.{ext}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock before epoch")
-                .as_nanos()
-        ));
-        params["out"] = temp.display().to_string().into();
-    }
-    let response = ipc(socket, "media.live.subscribe", params, identity)?;
+    let params = rpc::LiveSubscribe {
+        ticket: ticket.to_owned(),
+        out: out_path(out, "listen", ext),
+        video,
+        relay,
+        quality: quality.map(str::to_owned),
+        seconds,
+    };
+    let response = call_plain(socket, &params, identity)?;
     if !response.ok {
         return Err(io::Error::other(request_error(&response)));
     }
@@ -2389,33 +2396,16 @@ fn cmd_answer(
     identity: Option<&str>,
 ) -> io::Result<()> {
     let ext = if video { "h264" } else { "wav" };
-    let mut params = json!({"relay": relay, "video": video});
-    if let Some(quality) = quality {
-        params["quality"] = quality.into();
-    }
-    if let Some(seconds) = seconds {
-        params["seconds"] = seconds.into();
-    }
-    if let Some(wait) = wait {
-        params["wait"] = wait.into();
-    }
-    if let Some(from) = from {
-        params["from"] = from.into();
-    }
-    let temp;
-    if let Some(path) = out {
-        params["out"] = path.clone().into();
-    } else {
-        temp = std::env::temp_dir().join(format!(
-            "idfon-answer-{}.{ext}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock before epoch")
-                .as_nanos()
-        ));
-        params["out"] = temp.display().to_string().into();
-    }
-    let response = ipc(socket, "media.live.answer", params, identity)?;
+    let params = rpc::LiveAnswer {
+        peer: from.map(str::to_owned),
+        out: out_path(out, "answer", ext),
+        video,
+        relay,
+        quality: quality.map(str::to_owned),
+        seconds,
+        wait,
+    };
+    let response = call_plain(socket, &params, identity)?;
     if !response.ok {
         return Err(io::Error::other(request_error(&response)));
     }
