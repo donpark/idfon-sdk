@@ -20,4 +20,4 @@ npx idfon send PEER --stream --file audio.wav
 
 Supported platforms: macOS (arm64, x64), Linux (x64, arm64). The first command
 starts a background daemon (`idfond`, shipped in the same package); see the
-[repo](https://github.com/donpark/idfon) for the full CLI reference.
+[repo](https://github.com/donpark/idfon-sdk) for the full CLI reference.

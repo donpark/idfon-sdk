@@ -77,7 +77,7 @@ pub fn parse_audio_profile(codec: Option<&str>, sample_rate: Option<u32>) -> Res
             codec: AudioCodec::Pcm,
             sample_rate: 24_000,
         }),
-        // LiquidCodec (docs: idfon-home/docs/liquidcodec.md) needs a registered
+        // LiquidCodec needs a registered
         // implementation; a holder without one refuses the call up front.
         (Some("liquid"), Some(24_000)) => {
             anyhow::ensure!(

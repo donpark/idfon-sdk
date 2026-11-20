@@ -1,7 +1,6 @@
 #!/bin/sh
-# Group voice call, end to end and headless (idfon-home docs/group-live-chat.md,
-# G0-G2): three real daemons share a room, and three headless members
-# (crates/iroh-c-ffi/examples/group_member.rs) drive the apps' FFI: each
+# Group voice call, end to end and headless: three real daemons share a room, and three
+# headless members (crates/iroh-c-ffi/examples/group_member.rs) drive the apps' FFI: each
 # publishes a tone, joins through its daemon, follows the roster, and records
 # the mix. Real media over iroh, no phones.
 #

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Group-call signaling acceptance (idfon-home docs/group-live-chat.md, G1).
+# Group-call signaling acceptance.
 #
 # Three real daemons share a room. Each joins the room's call in turn; every
 # one must end up in one session with the other two on its roster. Then one

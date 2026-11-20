@@ -16,10 +16,8 @@ Clone them side by side (for example in `~/dev`):
 | --- | --- |
 | [idfon-core](https://github.com/donpark/idfon-core) | protocol, identity, transport, media, the daemon (`idfond`), the C ABI the apps link, the edge, and the Swift packages both apps use |
 | [idfon-sdk](https://github.com/donpark/idfon-sdk) | the `idfon` CLI, the MCP server, the Eve integration and agents, the voice-agent runner, and the end-to-end tests |
-| [idfon-ios](https://github.com/donpark/idfon-ios) | the iPhone app |
-| [idfon-mac](https://github.com/donpark/idfon-mac) | the macOS app |
-| idfon-home (private) | product docs and planning |
-| [idfon](https://github.com/donpark/idfon) | the archive: history before the split (2026-11-20), model R&D (Tyger ports, ASR tools, the voice corpus tools) and the Native-SDK shell |
+| idfon-ios, idfon-mac (private) | the iPhone and macOS apps |
+| idfon-home, idfon (private) | product docs and planning; the pre-split archive and model R&D |
 
 idfon-sdk and both apps build idfon-core from `../idfon-core`; set
 `IDFON_CORE` to use another checkout.

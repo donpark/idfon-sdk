@@ -17,7 +17,7 @@ automatically; there is no Windows package (the holder's IPC is a Unix socket).
   For an unsupported platform or a self-built holder, pass `--holder-command`
   (or set `EVE_IDFON_HOLDER`) pointing at
   `cargo build --release -p eve-idfon` output from the
-  [idfon workspace](https://github.com/donpark/idfon).
+  [idfon-sdk workspace](https://github.com/donpark/idfon-sdk).
 
 ## Install
 

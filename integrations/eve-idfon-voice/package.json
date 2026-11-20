@@ -5,7 +5,7 @@
   "license": "(MIT OR Apache-2.0)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/donpark/idfon.git",
+    "url": "git+https://github.com/donpark/idfon-sdk.git",
     "directory": "integrations/eve-idfon-voice"
   },
   "author": "Don Park",
