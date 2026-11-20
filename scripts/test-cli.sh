@@ -85,23 +85,24 @@ echo "PASS: status --json envelope"
 # --- identity ---------------------------------------------------------------
 ORIG_ID=$(echo "$S" | jq -r '.result.identity.name')
 ok "identity list" Q "$A" identity list --json
-ok "identity create work" Q "$A" identity create work --json
+ok "identity create travel" Q "$A" identity create travel --json
+fails "identity create case-only duplicate" Q "$A" identity create Travel --json
 Q "$A" identity list --json | jq -e --arg orig "$ORIG_ID" \
-  '[.result.identities[].name] | index("work") and index($orig)' >/dev/null
+  '[.result.identities[].name] | index("travel") and index($orig)' >/dev/null
 echo "PASS: identity list shows created + original"
-ok "identity use work" Q "$A" identity use work --json
-Q "$A" identity list --json | jq -e '.result.identities | map(select(.name == "work" and .active == true)) | length == 1' >/dev/null
+ok "identity use travel" Q "$A" identity use travel --json
+Q "$A" identity list --json | jq -e '.result.identities | map(select(.name == "travel" and .active == true)) | length == 1' >/dev/null
 echo "PASS: identity use switches active"
 S=$(Q "$A" status --json)   # fresh invocation: session identity = active identity
-echo "$S" | jq -e '.result.identity.name == "work"' >/dev/null
+echo "$S" | jq -e '.result.identity.name == "travel"' >/dev/null
 echo "PASS: status reflects active identity across invocations"
-S=$(Q "$A" --identity work status --json)
-echo "$S" | jq -e '.result.identity.name == "work"' >/dev/null
+S=$(Q "$A" --identity travel status --json)
+echo "$S" | jq -e '.result.identity.name == "travel"' >/dev/null
 echo "PASS: --identity flag selects identity"
-fails "identity delete active" Q "$A" identity delete work --json
+fails "identity delete active" Q "$A" identity delete travel --json
 ok "identity --identity flag" Q "$A" --identity "$ORIG_ID" status --json
 ok "identity use back" Q "$A" identity use "$ORIG_ID" --json
-ok "identity delete work" Q "$A" identity delete work --json
+ok "identity delete travel" Q "$A" identity delete travel --json
 
 # --- peer -------------------------------------------------------------------
 A_EP=$(Q "$A" status --json | jq -r .result.identity.endpoint_id)
