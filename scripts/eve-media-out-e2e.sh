@@ -65,7 +65,8 @@ export default defineAgent({
   model: mockModel(({ lastUserMessage, toolResults }) => {
     const result = toolResults.find((item) => item.name === "idfon__put");
     if (result && !result.isError) {
-      return { text: (result.output as { envelope: string }).envelope };
+      // The tool attached the envelope itself; the model only talks.
+      return { text: "Here you go." };
     }
     if (lastUserMessage === "send file" && !uploaded) {
       uploaded = true;
@@ -151,8 +152,10 @@ for line in open(sys.argv[1]):
         text = json.loads(line)["data"]["text"]
     except (ValueError, KeyError, TypeError):
         continue
-    if not text.startswith("IDFON-DATA/1"):
+    at = text.find("IDFON-DATA/1\n")
+    if at < 0:
         continue
+    text = text[at:]
     for field in text.splitlines():
         if field.startswith("ticket="):
             print(field[7:])

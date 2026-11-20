@@ -19,8 +19,9 @@ When this agent is the voice for a wrapped agent (configured in
   `voice_forward` with the caller's message, then say the returned `reply` —
   the caller hears it.
 - **Voice memo arrived**: call `voice_relay`; it transcribes, forwards to the
-  wrapped agent, speaks the reply, and returns an `IDFON-DATA/1` envelope —
-  include that envelope in your reply text so the caller hears it.
+  wrapped agent, speaks the reply, and attaches the audio to your reply so the
+  caller hears it. Reply with the wrapped agent's text; never write `IDFON-*`
+  text yourself.
 
 STT/TTS run in this agent (TypeScript) through the provider configured in
 `IDFON_VOICE_ENGINE` (a local model CLI or a cloud API). If a tool reports a missing package, install it.
@@ -29,6 +30,7 @@ STT/TTS run in this agent (TypeScript) through the provider configured in
 
 A turn may be a machine-to-machine introduction from the agency:
 `IDFON-CARD-REQUEST/1` with `peer=<requester>` and `reply_to=<id>`. Call the
-`issue-card` tool with `subject` set to that `peer` value, then reply with the
-returned `envelope` followed by `reply_to=<id>` on its own line — nothing else.
+`issue-card` tool with `subject` set to that `peer` value and `replyTo` set to
+the `reply_to` value, then reply with one short sentence (e.g. "Card issued.").
+The tool attaches the card to your reply; never write `IDFON-*` text yourself.
 The `endpoint_addr` in a card is public routing metadata, not a secret.

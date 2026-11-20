@@ -1,4 +1,6 @@
 import { defineTool } from "eve/tools";
+import { emitEnvelope } from "eve-idfon/outbox";
+import { envelopes } from "eve-idfon/envelopes";
 import { z } from "zod";
 
 import { opusToPcm24k, RATE, wavWrap } from "../audio";
@@ -10,7 +12,7 @@ import { forwardToWrapped, wrapTarget } from "../wrap";
 // wrapped agent.
 //
 //   caller voice memo -> STT -> text to the wrapped agent (A2A, await reply)
-//                     -> TTS -> reply audio blob + IDFON-DATA/1 envelope
+//                     -> TTS -> reply audio blob, attached to the reply (outbox)
 //
 // The caller hears the wrapped agent; the wrapped agent only ever sees text.
 export function voiceRelayTool() {
@@ -18,7 +20,8 @@ export function voiceRelayTool() {
     description:
       "Relay a caller's voice memo to a wrapped agent and speak its reply back. " +
       "Transcribes the memo, forwards the text to the wrapped agent (endpoint id " +
-      "+ ticket), and returns the reply's IDFON-DATA/1 envelope plus both texts.",
+      "+ ticket), and attaches the spoken reply to your reply automatically (do not write " +
+      "the ticket or any IDFON-* text). Returns both texts.",
     inputSchema: z.object({
       path: z
         .string()
@@ -62,13 +65,14 @@ export function voiceRelayTool() {
       if (!tts.synthesize) throw new Error(`voice provider '${tts.name}' has no TTS`);
       const wav = wavWrap(await tts.synthesize(reply));
       const blob = await putAudio(wav);
+      emitEnvelope(ctx.session.id, envelopes.data(blob.ticket, blob.size_bytes));
 
       return {
         transcript,
         reply,
         ticket: blob.ticket,
         size_bytes: blob.size_bytes,
-        envelope: `IDFON-DATA/1\nticket=${blob.ticket}\nsize=${blob.size_bytes}`,
+        delivered: "attached to your reply",
         reply_seconds: Math.round((wav.length / (RATE * 2)) * 10) / 10,
       };
     },

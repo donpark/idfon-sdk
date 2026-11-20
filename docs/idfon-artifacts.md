@@ -191,9 +191,9 @@ voice-to-selector resolution belongs in the agent versus the app.
    plus trailing envelopes, so a transcript followed by an envelope renders as
    two items instead of raw text. *Landed (iOS + mac).*
 3. **Agent emit** — the `add_artifact` tool stores bytes through the idfon
-   bridge (`/blob/put`) and returns an `IDFON-ARTIFACT/1` envelope the model
-   appends to its reply text; no holder or bridge change was needed. *Landed
-   (live-voice).*
+   bridge (`/blob/put`) and attaches an `IDFON-ARTIFACT/1` envelope to the
+   reply through the outbox (`docs/reply-blocks.md`, "Who writes an
+   envelope"); no holder or bridge change was needed. *Landed (live-voice).*
 4. **Reference capture** — *landed (iOS + mac):* the detail screen selects an
    image region (drag) or a text range, the composer shows a reference chip, and
    the sent turn is an `IDFON-REF/1` message — typed, or riding along with a

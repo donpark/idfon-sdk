@@ -41,6 +41,9 @@ import { emitEnvelope } from "eve-idfon/outbox";
 ```
 
 Never hand-write `fetch` + `x-idfon-channel-secret`, or an `IDFON-*/1` string.
+A tool that produces something for the caller calls `emitEnvelope`; it never
+returns an `envelope` for the model to paste, and instructions never ask the
+model to write one (`docs/reply-blocks.md`, "Who writes an envelope").
 
 ## Identity and secrets
 

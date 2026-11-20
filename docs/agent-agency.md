@@ -31,12 +31,15 @@ agency issues for the target so the target's reply is accepted (below).
 2. The agency's `request-invite` tool fetches the target's registration card
    from the provisioner (`POST /target`) and sends the target an A2A turn:
    `IDFON-CARD-REQUEST/1` with the caller's peer id + a `reply_to` id.
-3. The target's agent calls the `issue-card` tool; its **holder mints a fresh
-   ticket bound to the caller** and returns the holder's endpoint address.
-4. The target replies with `IDFON-CARD/1` (+ `reply_to`); the agency's
-   bridge matches the pending `reply_to` and hands the card back to the tool —
-   in the *same turn* the caller is waiting on.
-5. The agency wraps it as `IDFON-INVITE/1` and replies to the caller, who
+3. The target's agent calls the `issue-card` tool with `subject` and
+   `replyTo`; its **holder mints a fresh ticket bound to the caller**, and the
+   tool attaches `IDFON-CARD/1` (with `reply_to`) to the target's reply.
+4. The target's reply (a short sentence plus the card) reaches the agency's
+   bridge, which matches the pending `reply_to` and hands the reply back to
+   the tool, in the *same turn* the caller is waiting on. The tool finds the
+   card by its header.
+5. The agency's tool wraps it as `IDFON-INVITE/1` and attaches it to the
+   reply to the caller, who
    only ever needed the Agency contact.
 
 Because step 4 is synchronous within the caller's turn, no agency→caller

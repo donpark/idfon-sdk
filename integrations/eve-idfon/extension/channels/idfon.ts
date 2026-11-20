@@ -94,6 +94,50 @@ const bridge = client.post;
 const bridgeJson = client.json;
 const bridgeRetry = client.retry;
 
+// Send one reply to the session's caller(s): the model's text plus every
+// envelope tools emitted this turn (the outbox), in tool-call order. Tools
+// deliver; the model never writes envelope syntax (docs/reply-blocks.md).
+async function deliverReply(sessionId: string, target: SessionTarget, message: string) {
+  // Client-facing envelopes emitted by tools (speak/point/show) ride the
+  // reply in tool-call order, so delivery never depends on the model
+  // echoing them (docs/voice-multimodal.md).
+  const emitted = drainEnvelopes(sessionId);
+  const text = [message, ...emitted].filter(Boolean).join("\n");
+  if (!text) return;
+  const roomMembers = target.conversation
+    ? new Map(
+        (await bridgeJson<{ members: Array<{ message_id: string; peer_id: string; endpoint_id: string }> }>(
+          "/room/members",
+          { conversation: target.conversation }
+        )).members.map((member) => [member.peer_id, {
+          messageId: member.message_id,
+          peerId: member.peer_id,
+          endpointId: member.endpoint_id,
+        }] as const)
+      )
+    : target.members;
+  if (roomMembers.size === 0) {
+    log.warn("reply dropped: no members", {
+      session: sessionId, conversation: target.conversation, turn: target.turnMessageId,
+    });
+  }
+  const delivery = replyTail.then(async () => {
+    for (const member of roomMembers.values()) {
+      await bridgeRetry("/reply", {
+        // The holder uses this as the IPC correlation key. Add the recipient
+        // so fan-out replies from one Eve turn cannot collide.
+        in_reply_to: `${member.messageId}|${target.turnMessageId}|${member.peerId}`,
+        peer_id: member.peerId,
+        endpoint_id: member.endpointId,
+        conversation: target.conversation,
+        text,
+      });
+    }
+  });
+  replyTail = delivery.catch(() => {});
+  await delivery;
+}
+
 export default defineChannel({
   turnPolicy: "queue",
   audience({ caller }) {
@@ -291,43 +335,7 @@ export default defineChannel({
         });
         return;
       }
-      // Client-facing envelopes emitted by tools (speak/point/show) ride the
-      // reply in tool-call order, so delivery never depends on the model
-      // echoing them (docs/voice-multimodal.md).
-      const emitted = drainEnvelopes(ctx.session.id);
-      const text = emitted.length ? `${message}\n${emitted.join("\n")}` : message;
-      const roomMembers = target.conversation
-        ? new Map(
-            (await bridgeJson<{ members: Array<{ message_id: string; peer_id: string; endpoint_id: string }> }>(
-              "/room/members",
-              { conversation: target.conversation }
-            )).members.map((member) => [member.peer_id, {
-              messageId: member.message_id,
-              peerId: member.peer_id,
-              endpointId: member.endpoint_id,
-            }] as const)
-          )
-        : target.members;
-      if (roomMembers.size === 0) {
-        log.warn("reply dropped: no members", {
-          session: ctx.session.id, conversation: target.conversation, turn: target.turnMessageId,
-        });
-      }
-      const delivery = replyTail.then(async () => {
-        for (const member of roomMembers.values()) {
-          await bridgeRetry("/reply", {
-            // The holder uses this as the IPC correlation key. Add the recipient
-            // so fan-out replies from one Eve turn cannot collide.
-            in_reply_to: `${member.messageId}|${target.turnMessageId}|${member.peerId}`,
-            peer_id: member.peerId,
-            endpoint_id: member.endpointId,
-            conversation: target.conversation,
-            text,
-          });
-        }
-      });
-      replyTail = delivery.catch(() => {});
-      await delivery;
+      await deliverReply(ctx.session.id, target, message);
     },
     async "interaction.opened"(event, ctx) {
       const target = sessionTargets.get(ctx.session.id);
@@ -370,7 +378,14 @@ export default defineChannel({
       // A settled error/cancel ends the turn: emitted envelopes must not leak
       // into a later one, and the holder shows the same status names it did
       // before Eve 1.0 folded both into `turn.settled`.
-      if (event.data.outcome === "completed") return;
+      if (event.data.outcome === "completed") {
+        // Tools emitted envelopes but the model wrote no reply text: deliver
+        // them alone rather than leak them into the next turn's reply.
+        const target = sessionTargets.get(ctx.session.id);
+        if (target) await deliverReply(ctx.session.id, target, "");
+        else drainEnvelopes(ctx.session.id);
+        return;
+      }
       drainEnvelopes(ctx.session.id);
       const target = sessionTargets.get(ctx.session.id);
       const member = target?.members.get(target.lastPeerId);

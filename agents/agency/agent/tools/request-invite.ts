@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { createBridge } from "eve-idfon/bridge";
 import { envelopeField, envelopes } from "eve-idfon/envelopes";
+import { emitEnvelope } from "eve-idfon/outbox";
 
 // The agency never mints the card itself. It asks the target agent (over
 // idfon, A2A) to issue one, and relays the result back in this same turn so the
@@ -83,10 +84,14 @@ export default defineTool({
       reply_timeout_ms: 60_000,
     });
 
-    const card = sent.reply?.text ?? "";
-    if (!card.startsWith("IDFON-CARD/1")) {
-      throw new Error(`target did not return a card (got: ${card.slice(0, 60) || "empty"})`);
+    // The target's reply is its own text plus the card its issue-card tool
+    // attached; find the envelope rather than assume it comes first.
+    const replyText = sent.reply?.text ?? "";
+    const at = replyText.indexOf("IDFON-CARD/1\n");
+    if (at < 0) {
+      throw new Error(`target did not return a card (got: ${replyText.slice(0, 60) || "empty"})`);
     }
+    const card = replyText.slice(at);
     const contact = envelopeField(card, "contact");
     const ticket = envelopeField(card, "ticket");
     if (!contact || !ticket) throw new Error("card is missing contact or ticket");
@@ -100,6 +105,13 @@ export default defineTool({
       ticket,
     });
 
-    return { name: target.name ?? input.model, model: target.model ?? input.model, envelope };
+    // Attached to this turn's reply: the app turns it into an "Add contact"
+    // action. The model only says it has an invite.
+    emitEnvelope(ctx.session.id, envelope);
+    return {
+      name: target.name ?? input.model,
+      model: target.model ?? input.model,
+      delivered: "invite attached to your reply",
+    };
   },
 });

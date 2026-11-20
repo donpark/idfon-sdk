@@ -49,6 +49,13 @@ handler requires the same `secret` on every request.
 The `idfon__send`, `idfon__put`, `idfon__publish-live`, and
 `idfon__stop-live` tools are available at `eve-idfon/tools`.
 
+**Tools deliver; the model never writes envelopes.** `idfon__put`,
+`idfon__publish-live`, `issue-card`, `speak`, `add_artifact` and the view
+tools attach their `IDFON-*/1` envelope to the turn's reply automatically.
+To hand something to a *different* peer, call `idfon__send` with
+`attach: [{kind: "data" | "live" | "card", ...}]`. The full rule is in
+`docs/reply-blocks.md` ("Who writes an envelope").
+
 ### Calling the bridge from your own tools
 
 Use the shared client instead of hand-writing `fetch` + the secret header:
