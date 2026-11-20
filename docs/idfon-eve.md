@@ -240,13 +240,24 @@ text `IDFON-DATA/1` envelope, or a referenced ticket), whichever is smaller.
 ## Human-in-the-loop
 
 Eve approvals and elicitations park the turn durably and emit
-`interaction.opened`; `interaction.settled` reports how each ended. The channel
-maps input requests to an authenticated `IDFON-HITL/1` request and answers them
-with `IDFON-HITL-RESPONSE/1` through `inputResponses`; `inputResponses` never
-steer, matching Eve's contract. Authorization challenges and lifecycle outcomes
-use an authenticated `IDFON-STATUS/1` envelope, including the callback
-challenge, `authorization.completed`, and `turn.cancelled` / `turn.failed`
-(the channel's names for `turn.settled` outcomes `cancelled` / `failed`).
+`interaction.opened`; `interaction.settled` reports how each ended. Two kinds, two
+envelopes, one answer:
+
+| interaction | sent to the peer as | carries |
+| --- | --- | --- |
+| tool **approval** (`kind: "approval"`) | `IDFON-STATUS/1`, `event=authorization.required` | `data.interactionId`, `data.request.options` (`approve` / `deny`) |
+| **input** request (question, form) | `IDFON-HITL/1` | `[{requestId, kind, prompt, options, …}]` |
+
+The peer answers both with `IDFON-HITL-RESPONSE/1`, whose base64 `payload` is
+a JSON array of Eve answers: `[{"interactionId": "<id>", "optionId":
+"approve"}]` (or `"text"` for free-form). Eve validates answers strictly, so
+any other field (e.g. the old `requestId`) is rejected. Answers resolve
+through `inputResponses` and never steer, matching Eve's contract. In a room,
+an answer reaches the room's shared session (`sessionAddress`). Lifecycle
+outcomes also use `IDFON-STATUS/1`: `authorization.completed`, and
+`turn.cancelled` / `turn.failed` (the channel's names for `turn.settled`
+outcomes `cancelled` / `failed`). `scripts/eve-hitl-e2e.sh` runs deny and
+approve end to end. The apps do not render approvals yet.
 
 The holder also forwards validated capability grants into Eve session auth
 attributes. Approval policies can therefore require an idfon grant such as
