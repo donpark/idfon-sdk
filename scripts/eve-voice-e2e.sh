@@ -36,6 +36,10 @@ pids=""
 cleanup() {
   for pid in $pids; do kill "$pid" 2>/dev/null || true; done
   [ -n "$pids" ] && wait $pids 2>/dev/null || true
+  # `npx eve start` runs in a subshell; killing that pid leaves npm's node
+  # children running. Everything this run started has its unique work dir
+  # name in its command line (as /tmp or /private/tmp).
+  pkill -9 -f "$(basename "$work")" 2>/dev/null || true
   [ "${KEEP:-}" = 1 ] || rm -rf "$work"
 }
 trap cleanup EXIT
