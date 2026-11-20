@@ -19,7 +19,7 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use ed25519_dalek::SigningKey;
+use idfon_core::IdentityKey;
 use idfon_core::transport::{IrohTransport, MessageTransport};
 use idfon_protocol::MessageContent;
 use iroh::protocol::Router;
@@ -290,7 +290,7 @@ impl CallSession {
         caller_peer_id: &str,
         holder_endpoint_id: &str,
         transport: &IrohTransport,
-        key: &SigningKey,
+        key: &IdentityKey,
         profile: AudioProfile,
         broadcast_name: &str,
     ) -> Result<Self> {
