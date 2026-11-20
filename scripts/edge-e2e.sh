@@ -99,7 +99,7 @@ UNSCOPED=$("$NUF" --socket "$A" access ticket --subject "$OWNER_EP" \
 echo "PASS: owner daemon + scoped/unscoped resource.read tickets issued"
 
 # --- edge 1: ticket requester auth (the transparent P3 ingress) --------------
-"$EDGE" --bind 127.0.0.1:0 --require-ticket resource.read \
+IDFON_EDGE_METRICS_TOKEN=e2e-metrics "$EDGE" --bind 127.0.0.1:0 --require-ticket resource.read \
   --key-file "$W/edge-ticket.key" --allow "$OWNER_EP" >"$W/edge-ticket.log" 2>&1 &
 pids="$pids $!"
 E1=$(edge_addr "$W/edge-ticket.log")
@@ -137,11 +137,13 @@ echo "PASS: <ref>.localhost virtual host"
 assert_body ok "http://$E1/healthz"
 assert_code 404 "http://$E1/nope/fs/public/hello.txt" -H "x-idfon-ticket: $SCOPED"
 
-# Metrics are gated by requester auth and report the observed requests.
+# Metrics need the operator token on a ticket-auth edge (anyone can mint a
+# ticket, so a ticket must not open them) and report the observed requests.
 assert_code 401 "http://$E1/metrics"
-assert_code 200 "http://$E1/metrics" -H "x-idfon-ticket: $SCOPED"
+assert_code 401 "http://$E1/metrics" -H "x-idfon-ticket: $SCOPED"
+assert_code 200 "http://$E1/metrics" -H "authorization: Bearer e2e-metrics"
 grep -q "idfon_edge_requests_total" "$W/body" || fail "metrics body has no counters"
-echo "PASS: /metrics (auth-gated) reports edge counters"
+echo "PASS: /metrics (operator token) reports edge counters"
 
 # Per-request logging uses the custom idfon.edge.access target.
 grep -q "idfon.edge.access" "$W/edge-ticket.log" || fail "no idfon.edge.access request log"
