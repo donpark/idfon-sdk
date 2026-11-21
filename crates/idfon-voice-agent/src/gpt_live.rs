@@ -65,6 +65,10 @@ pub struct GptLiveConfig {
     pub delegation_request: String,
     /// One spoken-turn cap in seconds.
     pub reply_max_seconds: u64,
+    /// Offer the model client delegation (deep work handed to the agent behind
+    /// the holder). Off for a holder with no agent attached, e.g. the App
+    /// Review demo, where a delegated request would go unanswered.
+    pub delegation: bool,
     /// Resolved pipeline description (`eve_idfon::voice_info`), appended to the
     /// session instructions so the voice model can answer which model/STT/TTS
     /// it is. Not part of the channel config: filled from the raw params.
@@ -91,6 +95,7 @@ impl Default for GptLiveConfig {
             source: "gpt-live-delegation".into(),
             delegation_request: "[live voice call] The caller said: \"{said}\". Build what they asked for now; if it is something to look at (an explanation, report, diagram, chart, or web page), publish it with add_artifact and keep the spoken reply brief.".into(),
             reply_max_seconds: 120,
+            delegation: true,
             pipeline: Value::Null,
         }
     }
@@ -622,18 +627,17 @@ async fn connect_live(
         audio["voice"] = json!(voice);
     }
     let instructions = session_instructions(config);
+    let mut session = json!({
+        "model": config.model,
+        "store": false,
+        "audio": audio,
+        "instructions": instructions,
+    });
+    if config.delegation {
+        session["delegation"] = json!({ "type": "client" });
+    }
     ws.send(Message::text(
-        json!({
-            "type": "session.start",
-            "session": {
-                "model": config.model,
-                "store": false,
-                "delegation": { "type": "client" },
-                "audio": audio,
-                "instructions": instructions,
-            },
-        })
-        .to_string(),
+        json!({ "type": "session.start", "session": session }).to_string(),
     ))
     .await
     .context("send session.start")?;
@@ -769,6 +773,7 @@ mod tests {
         assert_eq!(defaults.model, "openai/gpt-live-1");
         assert_eq!(defaults.api_key_env, "AI_GATEWAY_API_KEY");
         assert_eq!(defaults.broadcast, "idfon-live-agent");
+        assert!(defaults.delegation);
         let overridden = GptLiveConfig::from_params(&serde_json::json!({
             "model": "vendor/other",
             "live_url": "wss://example.test/live",
@@ -781,6 +786,9 @@ mod tests {
         assert_eq!(overridden.api_key_env, "OTHER_KEY");
         assert_eq!(overridden.voice.as_deref(), Some("verse"));
         assert_eq!(overridden.reply_max_seconds, 30);
+        assert!(overridden.delegation);
+        let standalone = GptLiveConfig::from_params(&serde_json::json!({ "delegation": false }));
+        assert!(!standalone.delegation);
     }
 
     #[test]
