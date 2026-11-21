@@ -9,6 +9,12 @@ description = "Voice-agent kit and the eve-idfon-voice runner: one config, plugg
 name = "eve-idfon-voice"
 path = "src/main.rs"
 
+# Text turns through an OpenAI-compatible chat endpoint, in place of the Node
+# bridge + Eve (the App Review demo contact, idfon-edge deploy/reviewer).
+[[bin]]
+name = "idfon-chat-responder"
+path = "src/chat_responder.rs"
+
 [features]
 default = []
 # Full-duplex OpenAI Live-API (`gpt-live-1`) backend. Off by default so a
@@ -31,9 +37,10 @@ idfon-radio = { path = "../idfon-radio" }
 idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
 idfon-voice = { path = "../../../idfon-core/crates/idfon-voice", features = ["gateway"] }
 iroh = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
 tokio-websockets = { version = "0.13", default-features = false, features = ["client", "ring", "rustls-webpki-roots"], optional = true }
