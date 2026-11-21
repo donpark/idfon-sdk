@@ -3246,6 +3246,7 @@ dependencies = [
  "idfon-radio",
  "idfon-voice",
  "iroh",
+ "reqwest",
  "rustls",
  "serde",
  "serde_json",
