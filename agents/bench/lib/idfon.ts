@@ -11,11 +11,17 @@ import { fileURLToPath } from "node:url";
 // IDFON_CLI or PATH).
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
+// idfon-sdk shares idfon-core's cargo target dir (scripts/lib/core.sh), so a
+// checkout's builds land in <core>/target, not this repo's target/.
+const coreRoot = process.env.IDFON_CORE ?? join(repoRoot, "..", "idfon-core");
+
 function resolveBin(envVar: string, repoPath: string, name: string): string {
   const fromEnv = process.env[envVar];
   if (fromEnv) return fromEnv;
-  const fromRepo = join(repoRoot, repoPath);
-  if (existsSync(fromRepo)) return fromRepo;
+  for (const root of [coreRoot, repoRoot]) {
+    const fromRepo = join(root, repoPath);
+    if (existsSync(fromRepo)) return fromRepo;
+  }
   return name; // PATH (npm-installed `idfon` platform package)
 }
 
@@ -91,6 +97,13 @@ export async function daemonIdentity(socket: string): Promise<{
 export async function waitReady(socket: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    // Wait for our daemon's socket first: on a missing socket the CLI
+    // auto-starts its own daemon (no bench env, outlives the bench).
+    if (!existsSync(socket)) {
+      if (Date.now() > deadline) throw new Error(`daemon on ${socket} not ready: no socket`);
+      await new Promise((r) => setTimeout(r, 100));
+      continue;
+    }
     try {
       await idfon(["status", "--json"], { socket, timeoutMs: 2_000 });
       return;

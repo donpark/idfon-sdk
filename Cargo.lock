@@ -3077,6 +3077,7 @@ dependencies = [
  "idfon-protocol",
  "iroh",
  "iroh-gossip",
+ "noq-proto",
  "rand_core 0.10.1",
  "rcan",
  "rustls-pki-types",

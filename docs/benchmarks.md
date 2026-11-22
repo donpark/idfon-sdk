@@ -193,18 +193,34 @@ model latency. Voice calls get a one-sentence verdict; the table goes to chat.
 
 ## Relay access matters
 
-`relay.idfon.net` runs with `shared_token` access (`deploy/digitalocean/README.md`
-also documents allowlist / HTTP callout; an open relay is only ever deployed
-with the explicit `IDFON_RELAY_OPEN=1` — the deploy is fail-closed). Clients
-present the token at runtime:
+`relay.idfon.net` runs in **webhook mode** (`IDFON_RELAY_AUTH=1`, idfon-edge
+`docs/relay-auth.md`): the relay asks relay-auth on every connect and admits
+only endpoint ids with a live entry. The bench mints fresh endpoint keys per
+pair, so it admits each pair itself when given an owner identity key (one of
+the relay's `IDFON_RELAY_ISSUERS`):
 
-- daemons / bench: `IDFON_RELAY_TOKEN` (the bench scripts fall back to the
-  local secret file `~/.idfon/relay-token`, which the deploy tooling shares
-  with `scripts/deploy-digitalocean.sh` for consistent redeploys)
-- iOS/mac apps: the token field in Relay Settings (`RelaySettings.token`), or
-  on iOS at launch for automation: `-relayurls <url> [-relaytoken <token>]
-  [-relayonly]` (persists like the settings UI; applied before the daemon
-  starts)
+```sh
+IDFON_RELAY_OWNER_KEY="$HOME/Library/Application Support/Idfon/daemon/identity-default.key" \
+  scripts/relay-bench.sh
+```
+
+Per `idfon*` pair it enrolls daemon A as an owner endpoint (v2 owner proof),
+admits B on a 72-minute lease, restarts both so they dial the relay admitted,
+and revokes both afterwards (`agents/bench/lib/relay-auth.ts`; relay-auth
+origin defaults to `https://<relay host>:9443`, override with
+`IDFON_RELAY_AUTH_URL`). Existing entries are never touched. Without the key,
+the `idfon*` rows are denied.
+
+Only the daemons' identity endpoints are admitted. Before idfon-core#4, blob
+puts bound a random-key endpoint that webhook mode denied, and `Mbps` on the
+`idfon*` rows showed `put` waiting out `online()` (0.8 Mbps vs 15.8 on N0).
+Note that `Mbps` times `send --file` (put + message delivery); the receiver's
+`blob.get` is not part of it.
+
+Older modes, for other relays: `shared_token` clients present
+`IDFON_RELAY_TOKEN` (the bench falls back to the local secret file
+`~/.idfon/relay-token`); the apps have a token field in Relay Settings, or on
+iOS at launch: `-relayurls <url> [-relaytoken <token>] [-relayonly]`.
 
 A client the relay does not admit gets `The relay denied our authentication
 (not authorized)` (client-side; the relay logs denials only at debug) and **no
@@ -212,4 +228,4 @@ relay at all** — and since `IDFON_RELAY_URLS` replaces the N0 relays, such a
 peer is direct-only with stalling connects. Symptom check: grep daemon logs
 for `denied our authentication`. The old allowlist mode is documented but
 brittle here: the bench spawns fresh endpoint keys per run and third-party
-agents bring their own, so an allowlist can never admit them.
+agents bring their own, so a static allowlist can never admit them.
