@@ -2312,6 +2312,37 @@ fn generated_resource_id() -> String {
     )
 }
 
+/// On macOS with Idfon.app installed, the app hosts the default profile's
+/// daemon in-process (one endpoint per device: calls and blobs ride the
+/// identity endpoints). Start it headless (no window, no Dock icon; it idles
+/// out like idfond) and connect. `None` falls back to spawning idfond: not
+/// macOS, a custom socket or relay flags (the app uses its own settings), the
+/// app not installed, `IDFON_NO_APP=1`, or the app not serving in time.
+fn start_mac_app(socket: &str) -> Option<Client> {
+    if !cfg!(target_os = "macos")
+        || idfon_config::get("IDFON_NO_APP").is_some_and(|value| value == "1")
+        || RELAY_ARGS.get().is_some_and(|args| !args.is_empty())
+    {
+        return None;
+    }
+    let profile = PROFILE.get().cloned().flatten();
+    if profile.is_some() || Path::new(socket) != idfon_config::paths::socket(None) {
+        return None;
+    }
+    let launched = StdCommand::new("/usr/bin/open")
+        .args(["-g", "-j", "-b", "com.idfon.mac", "--args", "-headless"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !launched {
+        return None;
+    }
+    // App launch plus the daemon's store open: slower than a bare idfond.
+    Client::connect_with_retry(socket, Duration::from_secs(20)).ok()
+}
+
 /// Connects to the daemon, auto-starting idfond if nothing is listening.
 /// The daemon is left running after the CLI exits (dockerd-style shared
 /// daemon, not one daemon per command), but shuts itself down after
@@ -2321,6 +2352,9 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
     match Client::connect(socket) {
         Ok(client) => Ok(client),
         Err(ClientError::Connect(_)) => {
+            if let Some(client) = start_mac_app(socket) {
+                return Ok(client);
+            }
             match find_daemon_binary() {
                 Some(daemon) => {
                     let run_dir = Path::new(socket)
