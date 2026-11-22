@@ -49,9 +49,10 @@ for this repo's crates. A core change that breaks this repo is fixed in core.
   `idfon-mcp`; raw views at `<data-dir>/diag/`; edge health at `/_push/health`.
   See `docs/mcp-control.md` + `docs/diag.md`. (2026-11-10: hours were lost
   reconstructing from USB logs what the app was already reporting.)
-- **No identifiers in public artifacts.** These repos are public. Keep APNs key
-  ids, push tokens, peer/endpoint ids, call UUIDs, droplet IPs and SSH key
-  names out of commits, PR titles/bodies, issues and docs. Use placeholders
+- **No identifiers in public artifacts.** This repo is public, as is idfon-core;
+  the apps, idfon-edge, idfon-home, idfon-site and the archive are private. Keep
+  APNs key ids, push tokens, peer/endpoint ids, call UUIDs, droplet IPs and SSH
+  key names out of commits, PR titles/bodies, issues and docs. Use placeholders
   (`<key-id>`, `<peer>`) and local files (`~/.idfon/edge.apns.keyid`).
 - **Privacy posture lives in `README.md` ("Privacy").** Keep any new surface
   consistent with it: content end-to-end between the parties, the edge holds
