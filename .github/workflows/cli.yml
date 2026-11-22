@@ -5,21 +5,12 @@
 # needs NPM_TOKEN plus the platform packages are unscoped; only the name `idfon` must be free on npmjs.com beforehand.
 name: cli
 
+# Builds only on npm-v* tags (and manual runs) to keep Actions storage down;
+# artifacts live just long enough for the publish job.
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths:
-      - "crates/**"
-      - "cli/**"
-      - "scripts/build-cli.sh"
-      - ".github/workflows/cli.yml"
-  pull_request:
-    paths:
-      - "crates/**"
-      - "cli/**"
-      - "scripts/build-cli.sh"
-      - ".github/workflows/cli.yml"
+    tags: ["npm-v*"]
 
 permissions:
   contents: read
@@ -95,6 +86,7 @@ jobs:
           name: ${{ matrix.pkg }}
           path: "idfon-sdk/*.tgz"
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     if: startsWith(github.ref, 'refs/tags/npm-v')
