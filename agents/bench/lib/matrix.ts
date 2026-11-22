@@ -18,7 +18,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, appendFileSync, existsSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { idfon, idfondBin, pair, stats, timed, waitReady, repoRoot } from "./idfon.ts";
+import { daemonIdentity, idfon, idfondBin, pair, stats, timed, waitReady, repoRoot } from "./idfon.ts";
+import { admitPair, relayAuthFor } from "./relay-auth.ts";
 
 export interface MatrixRow {
   label: string;
@@ -129,27 +130,54 @@ export async function measurePair(
   const count = opts.count ?? 10;
   const blobBytes = opts.blobBytes ?? 1024 * 1024;
   const work = mkdtempSync(join(tmpdir(), `idfon-matrix-${label}-`));
-  const children: ChildProcess[] = [];
+  const children = new Map<string, ChildProcess>();
   const socket = (name: string) => join(work, `${name}.sock`);
+  const start = async (name: string) => {
+    const child = spawn(idfondBin(), ["--socket", socket(name), "--data-dir", join(work, name)], {
+      env: { ...daemonEnv(), ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    // Drain so a chatty daemon never blocks on a full pipe buffer.
+    child.stdout?.on("data", () => {});
+    child.stderr?.on("data", () => {});
+    children.set(name, child);
+  };
+  const stop = async (name: string) => {
+    const child = children.get(name);
+    if (!child || child.exitCode !== null) return;
+    const exited = new Promise((r) => child.once("exit", r));
+    child.kill("SIGTERM");
+    await exited;
+    // A stale socket would make the next `idfon` call auto-start a daemon.
+    rmSync(socket(name), { force: true });
+  };
+  let revoke: (() => Promise<void>) | null = null;
   try {
-    for (const name of ["a", "b"]) {
-      const child = spawn(idfondBin(), ["--socket", socket(name), "--data-dir", join(work, name)], {
-        env: { ...daemonEnv(), ...env },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      // Drain so a chatty daemon never blocks on a full pipe buffer.
-      child.stdout?.on("data", () => {});
-      child.stderr?.on("data", () => {});
-      children.push(child);
-    }
+    for (const name of ["a", "b"]) await start(name);
     await waitReady(socket("a"));
     await waitReady(socket("b"));
+    // Webhook-mode relay: admit this pair's fresh endpoint ids, then restart
+    // both daemons so they dial the relay admitted instead of waiting out
+    // the denial backoff (keys persist in the data dirs).
+    const auth = env.IDFON_RELAY_URLS ? relayAuthFor(env.IDFON_RELAY_URLS.split(",")[0]) : null;
+    if (auth) {
+      const a = (await daemonIdentity(socket("a"))).endpointId;
+      const b = (await daemonIdentity(socket("b"))).endpointId;
+      revoke = await admitPair(auth, a, b, `bench ${label}`);
+      for (const name of ["a", "b"]) {
+        await stop(name);
+        await start(name);
+      }
+      await waitReady(socket("a"));
+      await waitReady(socket("b"));
+    }
     await pair(socket("a"), socket("b"));
     return await measureExchange(socket("a"), "bench-b", count, blobBytes);
   } catch (error) {
     return { error: firstLine(error) };
   } finally {
-    for (const child of children) child.kill("SIGTERM");
+    for (const name of children.keys()) await stop(name);
+    await revoke?.();
     rmSync(work, { recursive: true, force: true });
   }
 }
