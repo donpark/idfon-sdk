@@ -211,10 +211,11 @@ origin defaults to `https://<relay host>:9443`, override with
 `IDFON_RELAY_AUTH_URL`). Existing entries are never touched. Without the key,
 the `idfon*` rows are denied.
 
-Only the daemons' identity endpoints are admitted. Blob transfers bind a
-separate endpoint with a random key, which webhook mode denies, so `Mbps` on
-the `idfon*` rows measures a ~10 s relay stall, not throughput, until those
-endpoints are admitted too (measured 2026-11-22: 0.8 Mbps vs 15.8 on N0).
+Only the daemons' identity endpoints are admitted. Before idfon-core#4, blob
+puts bound a random-key endpoint that webhook mode denied, and `Mbps` on the
+`idfon*` rows showed `put` waiting out `online()` (0.8 Mbps vs 15.8 on N0).
+Note that `Mbps` times `send --file` (put + message delivery); the receiver's
+`blob.get` is not part of it.
 
 Older modes, for other relays: `shared_token` clients present
 `IDFON_RELAY_TOKEN` (the bench falls back to the local secret file
