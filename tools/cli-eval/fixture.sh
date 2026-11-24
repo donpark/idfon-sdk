@@ -64,12 +64,18 @@ with wave.open(sys.argv[1], "wb") as w:
 EOF
 printf 'shared payload\n' >"$dir/b/shared.txt"
 QB put --file "$dir/b/shared.txt" >"$dir/work/ticket.txt"
-# Carol: a second identity on B, exported as a vCard for the add-contact task.
-B_ID=$(QB status --json | jq -r .result.identity.name)
-QB identity create carol >/dev/null
-QB identity use carol >/dev/null   # binds carol's endpoint
-QB contact export --out "$dir/work/carol.vcf"
-QB identity use "$B_ID" >/dev/null
+# Carol: a third daemon (there is one identity per daemon now), exported as a
+# vCard for the add-contact task.
+mkdir -p "$dir/c"
+C="$dir/c/s.sock"
+"$IDFOND" --socket "$C" --data-dir "$dir/c" >"$dir/c/log" 2>&1 &
+echo $! >>"$dir/pids"
+for _ in $(seq 1 100); do
+  "$NUF" --socket "$C" status --json >/dev/null 2>&1 && break
+  sleep 0.1
+done
+"$NUF" --socket "$C" identity rename carol >/dev/null
+"$NUF" --socket "$C" contact export --out "$dir/work/carol.vcf"
 # Two earlier messages from bob.
 QB send alice --text "lunch at noon?" >/dev/null
 QB send alice --text "bring the slides" >/dev/null

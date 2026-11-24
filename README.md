@@ -73,8 +73,8 @@ Run `idfon --help` for the complete command list. Common commands:
 ```sh
 # Inspect and manage local state
 idfon status
-idfon identity list
-idfon identity create work
+idfon identity list            # one you; contacts get tags instead
+idfon tag add bob Work         # tags decide what contacts see (presence, photo)
 idfon peer list
 idfon peer add <endpoint-id-or-address> --name bob
 
