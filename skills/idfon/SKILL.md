@@ -36,6 +36,14 @@ idfon answer -o call.wav            # take the next incoming call
 idfon room create team --member bob # group with members
 idfon room send team "standup"
 
+idfon card send bob "Lunch?" --action yes=Yes --action no=No --wait
+                                    # a question with buttons in bob's chat; prints
+                                    #   `bob chose yes (card ID)` (--json for values)
+idfon card send bob "Book a table" --field name=Name --action book=Book --wait
+                                    # fields: what bob types comes back as name=...
+idfon card send bob "Pick one" --sheet ...   # during a call, opens over bob's screen
+idfon card wait bob --card compose  # bob picked one of your + actions (idfon.json)
+
 idfon access check bob [CAPABILITY] # may you message bob? (default message.send)
 idfon access grant bob              # allow sending to and receiving from bob
 idfon access ticket bob --expires 2026-12-31   # a ticket that lets bob message you
@@ -48,6 +56,7 @@ idfon visibility --photo off        # hide your photo from everyone by default
 ## Notes
 - Durations: `30s`, `5m`, `2h`, `30d`. Dates: `2026-12-31`.
 - Files you sent show in a peer's `inbox` as `[file, N bytes]`; they save it with `idfon recv`.
+- A card sent again with the same `--id` changes in place on their phone.
 - `idfon rpc METHOD '{json}'` calls any daemon method directly.
 - `idfon config show | set KEY VALUE | unset KEY` manage settings (env var wins over `~/.idfon/config.toml`); `--profile NAME` runs a separate daemon.
 - `idfon <command> --help` lists every flag.

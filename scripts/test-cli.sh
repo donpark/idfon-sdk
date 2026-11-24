@@ -6,7 +6,7 @@ set -eu
 # (stream-e2e.sh / fanout-e2e.sh cover live streaming; this covers the rest).
 #
 # Verified: status, shutdown, identity (list/rename; create/delete refused),
-# tag (add/list/set/rename/remove/delete), visibility, peer
+# tag (add/list/set/rename/remove/delete), visibility, card (send --wait), peer
 # (add/list/show/resolve/status/update/remove), access
 # (allow/check/ticket), send --text (+ --idempotency-key), send --file,
 # recv (+ --out/--from), put (+ --resource-id/--json), get, events (+ --type),
@@ -194,6 +194,17 @@ fails "operation cancel missing" Q "$A" operation cancel op_nope --json
 ok "send --text --idempotency-key" Q "$A" send bob --text dedupe --idempotency-key cli-test-k1 --json
 ok "send --text --idempotency-key (resend)" Q "$A" send bob --text dedupe --idempotency-key cli-test-k1 --json
 fails "send without PEER" Q "$A" send --text hi --json
+
+# --- card send --wait: bob answers like the phone does ------------------------
+Q "$A" card send bob "Lunch?" --id cli-card-1 --action yes=Yes --field note=Note --wait --timeout 30s --json > "$work/card.json" &
+card_pid=$!
+sleep 2
+Q "$B" inbox --json | grep -q 'IDFON-UI/1' || { echo "FAIL: card not received"; exit 1; }
+values=$(printf '{"note":"noon"}' | base64)
+ok "card answer" Q "$B" send alice --text "$(printf 'IDFON-UI-ACTION/1\ncard=cli-card-1\naction=yes\nvalues=%s' "$values")" --json
+wait "$card_pid"
+jq -e '.card == "cli-card-1" and .action == "yes" and .values.note == "noon"' "$work/card.json" >/dev/null
+echo "PASS: card send --wait reads the answer and its values"
 
 # --- put/get variations (chunked round trip lives in test-e2e.sh) ------------
 printf 'cli-test-payload' > "$work/payload.bin"
