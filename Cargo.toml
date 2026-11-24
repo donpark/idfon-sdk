@@ -32,7 +32,8 @@ strip = "symbols"
 # - moq: donpark/moq branch liquid-codec-next, on moq-dev/moq 4a6f52248 (the rev
 #   iroh-live pins). LiquidCodec, libopus 1.6.1, opt-in gap recovery, Opus FEC knob.
 # - iroh-live: donpark/iroh-live branch audio-renditions-next, on n0-computer 60a3fcf.
-#   Publisher-ordered audio renditions, player rendition choice, live bitrate retune.
+#   Publisher-ordered audio renditions, player rendition choice, live bitrate retune,
+#   mDNS via iroh-mdns-address-lookup (iroh-mdns-peer-lookup declares no license).
 [patch."https://github.com/moq-dev/moq"]
 hang = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
 kio = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
@@ -56,12 +57,12 @@ moq-video = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
 qmux = { git = "https://github.com/donpark/moq", rev = "14598b93c" }
 
 [patch."https://github.com/n0-computer/iroh-live"]
-iroh-live = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-iroh-live-node = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-access = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-adaptive = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-json = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-player = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-publisher = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-ext-sources = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
-moq-transport-iroh = { git = "https://github.com/donpark/iroh-live", rev = "1a7996eb0" }
+iroh-live = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+iroh-live-node = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-access = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-adaptive = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-json = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-player = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-publisher = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-ext-sources = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
+moq-transport-iroh = { git = "https://github.com/donpark/iroh-live", rev = "fbdcbdda" }
