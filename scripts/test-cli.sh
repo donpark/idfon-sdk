@@ -8,7 +8,8 @@ set -eu
 # Verified: status, shutdown, identity (list/rename; create/delete refused),
 # tag (add/list/set/rename/remove/delete), visibility, card (send --wait), peer
 # (add/list/show/resolve/status/update/remove), access
-# (allow/check/ticket), send --text (+ --idempotency-key), send --file,
+# (allow/check/ticket), request (list/accept/decline --block/unblock: a one-way
+# add held as a contact request), send --text (+ --idempotency-key), send --file,
 # recv (+ --out/--from), put (+ --resource-id/--json), get, events (+ --type),
 # wait, operation (get/wait/cancel), --json envelopes, and documented failure
 # paths (missing peers, bogus tickets/operations, recv timeout).
@@ -236,6 +237,80 @@ fails "recv timeout" Q "$A" recv --timeout-ms 300 --json
 
 # --- stream --list (publish/dial covered by stream-e2e.sh) -------------------
 ok "send --stream --list" Q "$A" send --stream --list --json
+
+# --- contact requests: a one-way add -----------------------------------------
+# C adds B one way; B doesn't know C. B's daemon holds C's first message as a
+# contact request, and C's outbox still sees it delivered. Accepting delivers
+# it as message.received; after that B can reply and C's messages pass.
+start_daemon() { # label
+  mkdir -p "$work/$1"
+  "$core_target/release/idfond" --socket "$work/$1/idfond.sock" --data-dir "$work/$1" &
+  pids="$pids $!"
+  wait_ready "$work/$1/idfond.sock" "$1"
+}
+C="$work/c/idfond.sock"
+D="$work/d/idfond.sock"
+start_daemon c
+start_daemon d
+C_PID=$(Q "$C" status --json | jq -r .result.identity.public_key)
+D_PID=$(Q "$D" status --json | jq -r .result.identity.public_key)
+ok "peer add (one way)" Q "$C" peer add "$B_PID" --name bob --endpoint-id "$B_EP" --endpoint-addr "$B_ADDR" --json
+ok "access allow (C->B send)" Q "$C" access allow "$B_PID" message.send --json
+Q "$B" request list --json | jq -e '.result.requests | length == 0' >/dev/null
+echo "PASS: request list empty"
+CURSOR=$(Q "$B" events --json | jq -r '.result.events | last | .cursor // empty')
+S=$(Q "$C" send bob --text "hi, we met at the meetup" --json)
+OPID=$(echo "$S" | jq -r .result.operation_id)
+Q "$C" operation wait "$OPID" --json | jq -e '.result.operation.status == "delivered"' >/dev/null
+echo "PASS: a held message is delivered for the sender"
+W=$(Q "$B" wait --type contact.request --after "$CURSOR" --json)
+echo "$W" | jq -e '.result.events[0].data.text == "hi, we met at the meetup" and .result.events[0].data.peer_id == "'"$C_PID"'"' >/dev/null
+echo "PASS: contact.request event"
+S=$(Q "$B" request list --json)
+echo "$S" | jq -e '.result.requests | length == 1' >/dev/null
+echo "$S" | jq -e '.result.requests[0].peer_id == "'"$C_PID"'" and (.result.requests[0].messages | length == 1) and (.result.requests[0].endpoint_addr | type == "string")' >/dev/null
+echo "PASS: request list holds the message and the sender's address"
+REQ=$(echo "$S" | jq -r '.result.requests[0].request_id')
+ok "request list (human)" sh -c "\"$NUF\" --socket '$B' request list | grep -q '$REQ'"
+Q "$B" peer list --json | jq -e '.result.peers | map(select(.id == "'"$C_PID"'")) | length == 0' >/dev/null
+echo "PASS: nothing accepted automatically"
+Q "$B" events --json --type message.received | jq -e '.result.events | map(select(.data.peer_id == "'"$C_PID"'")) | length == 0' >/dev/null
+echo "PASS: no message.received before accept"
+CURSOR=$(Q "$B" events --json | jq -r '.result.events | last | .cursor // empty')
+S=$(Q "$B" request accept "$REQ" --name carol --json)
+echo "$S" | jq -e '.ok == true and .result.peer.name == "carol" and .result.peer.id == "'"$C_PID"'"' >/dev/null
+echo "PASS: request accept adds the contact"
+W=$(Q "$B" wait --type message.received --after "$CURSOR" --json)
+echo "$W" | jq -e '.result.events[0].data.text == "hi, we met at the meetup" and .result.events[0].data.peer_id == "'"$C_PID"'"' >/dev/null
+echo "PASS: accept delivers the held message as message.received"
+Q "$B" request list --json | jq -e '.result.requests | length == 0' >/dev/null
+echo "PASS: accepted request is gone"
+S=$(Q "$B" send carol --text "nice to meet you" --json)
+OPID=$(echo "$S" | jq -r .result.operation_id)
+Q "$B" operation wait "$OPID" --json | jq -e '.result.operation.status == "delivered"' >/dev/null
+echo "PASS: B replies at the address the request kept"
+CURSOR=$(Q "$B" events --json | jq -r '.result.events | last | .cursor // empty')
+ok "send after accept" Q "$C" send bob --text "second message" --json
+W=$(Q "$B" wait --type message.received --after "$CURSOR" --json)
+echo "$W" | jq -e '.result.events[0].data.text == "second message"' >/dev/null
+echo "PASS: later messages pass directly"
+fails "request accept missing" Q "$B" request accept req_nope --json
+
+# Decline with --block: D's later messages are refused, with no new request.
+ok "peer add (D one way)" Q "$D" peer add "$B_PID" --name bob --endpoint-id "$B_EP" --endpoint-addr "$B_ADDR" --json
+ok "access allow (D->B send)" Q "$D" access allow "$B_PID" message.send --json
+CURSOR=$(Q "$B" events --json | jq -r '.result.events | last | .cursor // empty')
+ok "send (D, unknown to B)" Q "$D" send bob --text "buy now" --json
+Q "$B" wait --type contact.request --after "$CURSOR" --json | jq -e '.result.events[0].data.peer_id == "'"$D_PID"'"' >/dev/null
+REQ=$(Q "$B" request list --json | jq -r '.result.requests[0].request_id')
+ok "request decline --block" sh -c "\"$NUF\" --socket '$B' request decline '$REQ' --block | grep -q blocked"
+S=$(Q "$D" send bob --text "buy now!!" --retries 0 --json)
+OPID=$(echo "$S" | jq -r .result.operation_id)
+Q "$D" operation wait "$OPID" --json | jq -e '.result.operation.status == "failed"' >/dev/null
+echo "PASS: a blocked sender is refused"
+Q "$B" request list --json | jq -e '.result.requests | length == 0' >/dev/null
+echo "PASS: no request from a blocked sender"
+ok "request unblock" sh -c "\"$NUF\" --socket '$B' request unblock '$D_PID' | grep -qx unblocked"
 
 # --- peer remove --------------------------------------------------------------
 ok "peer remove" Q "$A" peer remove bob --json

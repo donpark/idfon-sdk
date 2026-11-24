@@ -140,6 +140,9 @@ enum Command {
     /// Who may message you: check, grant, or hand out tickets
     #[command(subcommand)]
     Access(AccessCmd),
+    /// Contact requests: messages from people who added you but aren't your contacts
+    #[command(subcommand)]
+    Request(RequestCmd),
     /// Show daemon status
     Status,
     /// Verify local identity and peer channel endpoint consistency
@@ -831,6 +834,39 @@ enum AccessCmd {
 }
 
 #[derive(Subcommand)]
+enum RequestCmd {
+    /// List pending contact requests, newest first
+    List,
+    /// Add the sender as a contact and deliver their messages: `request accept REQ --name sam`
+    Accept {
+        /// Request id (from `idfon request list`)
+        #[arg(value_name = "REQ")]
+        request_id: String,
+        /// Name for the new contact (default: a short id)
+        #[arg(long)]
+        name: Option<String>,
+        /// Admit them to this room only (name or id), e.g. a group join
+        #[arg(long, value_name = "ROOM")]
+        conversation: Option<String>,
+    },
+    /// Drop a contact request (`--block` also refuses their future messages)
+    Decline {
+        /// Request id (from `idfon request list`)
+        #[arg(value_name = "REQ")]
+        request_id: String,
+        /// Also refuse the sender's future messages
+        #[arg(long)]
+        block: bool,
+    },
+    /// Let a blocked sender make contact requests again
+    Unblock {
+        /// The sender's id (`peer_id` in `request list --json`)
+        #[arg(value_name = "PEER_ID")]
+        peer_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum McpCmd {
     /// Open a per-peer local socket, spliced to the peer's idfon/mcp/1 stream
     /// (connect with `idfon-mcp connect --uds <socket>`); requires an
@@ -1167,6 +1203,7 @@ fn run() -> io::Result<()> {
             call(socket, &rpc::DaemonStatus {}, identity, cli.stdin_json)?,
             json,
         ),
+        Command::Request(command) => cmd_request(socket, command, identity, json, cli.stdin_json),
         Command::Doctor => cmd_doctor(socket, identity, json, cli.stdin_json),
         Command::Identity(IdentityCmd::List) => {
             let response = call(socket, &rpc::IdentityList {}, identity, cli.stdin_json)?;
@@ -2088,6 +2125,88 @@ fn print_added(response: Response, json: bool) -> io::Result<()> {
 
 /// Prints the response (JSON envelope with `--json`, human text otherwise)
 /// and maps `ok: false` onto a non-zero exit.
+/// `idfon request …`: held messages from senders who aren't contacts
+/// (idfon-core docs/protocol.md "Contact requests").
+fn cmd_request(
+    socket: &str,
+    command: RequestCmd,
+    identity: Option<&str>,
+    json: bool,
+    stdin_json: bool,
+) -> io::Result<()> {
+    match command {
+        RequestCmd::List => {
+            let response = call(socket, &rpc::RequestList {}, identity, stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let requests = ux::ok_result(response)?["requests"].as_array().cloned().unwrap_or_default();
+            if requests.is_empty() {
+                eprintln!("no contact requests");
+            }
+            for request in requests {
+                let messages = request["messages"].as_array().cloned().unwrap_or_default();
+                println!(
+                    "{}  from {}  {} message(s)",
+                    request["request_id"].as_str().unwrap_or("?"),
+                    request["peer_id"].as_str().unwrap_or("?"),
+                    messages.len()
+                );
+                for message in messages {
+                    let text = message["text"].as_str().unwrap_or_default();
+                    let mut line: String = text.lines().next().unwrap_or_default().chars().take(80).collect();
+                    if line.len() < text.len() {
+                        line.push('…');
+                    }
+                    match message["conversation"].as_str() {
+                        Some(room) => println!("  [{room}] {line}"),
+                        None => println!("  {line}"),
+                    }
+                }
+            }
+            Ok(())
+        }
+        RequestCmd::Accept { request_id, name, conversation } => {
+            // A room name works as well as its id.
+            let conversation = conversation
+                .map(|room| ux::resolve_room(socket, identity, &room).unwrap_or(room));
+            let response = call(
+                socket,
+                &rpc::RequestAccept { request_id, name, conversation },
+                identity,
+                stdin_json,
+            )?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let result = ux::ok_result(response)?;
+            println!(
+                "added {} ({}); their messages are in your inbox",
+                result["peer"]["name"].as_str().unwrap_or("?"),
+                result["peer"]["id"].as_str().unwrap_or("?")
+            );
+            Ok(())
+        }
+        RequestCmd::Decline { request_id, block } => {
+            let response = call(socket, &rpc::RequestDecline { request_id, block }, identity, stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            println!("{}", if block { "declined and blocked" } else { "declined" });
+            Ok(())
+        }
+        RequestCmd::Unblock { peer_id } => {
+            let response = call(socket, &rpc::RequestUnblock { peer_id }, identity, stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let unblocked = ux::ok_result(response)?["unblocked"] == true;
+            println!("{}", if unblocked { "unblocked" } else { "was not blocked" });
+            Ok(())
+        }
+    }
+}
+
 fn finish(response: Response, json: bool) -> io::Result<()> {
     if json {
         println!(

@@ -124,6 +124,14 @@ idfon mcp listen --to <peer>
 idfon shutdown
 ```
 
+Someone who adds you without being your contact reaches you as a **contact
+request**: their plain-text messages are held (capped) and nothing is accepted
+automatically. `idfon request list` shows them, `idfon request accept REQ
+[--name N] [--conversation ROOM]` adds the sender and delivers the held
+messages as ordinary `message.received` events, and `idfon request decline REQ
+[--block]` drops them. See "Contact requests" in idfon-core's
+`docs/protocol.md`.
+
 Use `--json` for response envelopes intended for scripts. `--socket`,
 `--identity`, and `--keep-alive` are global options.
 

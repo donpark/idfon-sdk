@@ -47,6 +47,11 @@ idfon card wait bob --card compose  # bob picked one of your + actions (idfon.js
 idfon access check bob [CAPABILITY] # may you message bob? (default message.send)
 idfon access grant bob              # allow sending to and receiving from bob
 idfon access ticket bob --expires 2026-12-31   # a ticket that lets bob message you
+idfon request list                  # messages from people who added you but aren't
+                                    #   contacts yet (held until you decide)
+idfon request accept REQ --name sam # add them; their messages land in your inbox
+                                    #   (--conversation ROOM: admit to that group only)
+idfon request decline REQ [--block] # drop it; --block refuses their later messages
 idfon identity rename "Ann Lee"     # your name (there is one identity)
 idfon tag add bob Work              # tag a contact; filters and what they see
 idfon tag set Work --hide-presence  # Work contacts can't see when you're online
@@ -57,6 +62,9 @@ idfon visibility --photo off        # hide your photo from everyone by default
 - Durations: `30s`, `5m`, `2h`, `30d`. Dates: `2026-12-31`.
 - Files you sent show in a peer's `inbox` as `[file, N bytes]`; they save it with `idfon recv`.
 - A card sent again with the same `--id` changes in place on their phone.
+- Adding someone works one way: your first message reaches them as a contact
+  request, and you can write again once they accept. Watch for new requests
+  with `idfon wait --type contact.request`.
 - `idfon rpc METHOD '{json}'` calls any daemon method directly.
 - `idfon config show | set KEY VALUE | unset KEY` manage settings (env var wins over `~/.idfon/config.toml`); `--profile NAME` runs a separate daemon.
 - `idfon <command> --help` lists every flag.
