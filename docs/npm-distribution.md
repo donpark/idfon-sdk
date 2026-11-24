@@ -78,7 +78,7 @@ and the launcher then errors at first command).
   to idfon-core first (the release build checks core out at that tag), then
   to idfon-sdk. Because `on.push` lists only `branches: [main]` (no tags),
   pushing the tag triggers nothing: dispatch it explicitly —
-  `gh workflow run cli.yml --ref npm-v0.12.0`. That rebuilds all four targets,
+  `gh workflow run cli.yml --ref npm-v0.14.0`. That rebuilds all four targets,
   then downloads the artifacts and publishes all five packages. Requires the
   `NPM_TOKEN` repo secret. Re-runs are idempotent via npm's duplicate-version
   rejection. So a normal `main` push only builds; publishing always needs an
@@ -93,7 +93,7 @@ must match `cli/idfon/package.json` (the CI smoke test checks it).
 
 Launch gate: the repo goes public first; `npm view idfon` confirmed the name
 free (2026-09-06). Platform packages use the same version as the Cargo
-workspace — bump in lockstep (currently 0.12.0).
+workspace — bump in lockstep (currently 0.14.0).
 
 ## The Eve channel package
 
