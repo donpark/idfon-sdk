@@ -75,6 +75,7 @@ Run `idfon --help` for the complete command list. Common commands:
 idfon status
 idfon identity list            # one you; contacts get tags instead
 idfon tag add bob Work         # tags decide what contacts see (presence, photo)
+idfon card send bob "Lunch?" --action yes=Yes --action no=No --wait   # buttons; prints the answer
 idfon peer list
 idfon peer add <endpoint-id-or-address> --name bob
 

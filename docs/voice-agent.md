@@ -51,6 +51,14 @@ re-pairing and the ticket stays small.
 - **`idfon.json`** — the agent's manifest. `voice.options` lists what it can
   run: `stt` / `tts` / `full-duplex` options, each with an `id`, a `label`, and
   a `side` (`server` = the holder runs it, `client` = the caller does).
+- **`actions`** — verbs the agent offers in the caller's + menu (idfon-ios
+  "Contacts' Actions in +"): `[{ "id": "book", "title": "Book a Table",
+  "glyph": "fork.knife" }]`, at most six; `glyph` is an SF Symbol. Picking one
+  sends the agent `IDFON-UI-ACTION/1` with `card=compose` and `action=<id>`;
+  the agent answers with a card (`IDFON-UI/1`), often a form. The manifest is
+  passed through as-is, so an agent adds `actions` to its own `idfon.json`.
+  `scripts/companion-demo.sh` is a small agent built on `idfon card` that
+  answers such a request and shows cards during a call.
 - **Derivation + merge** — `eve_idfon::voice_options` derives defaults from the
   live config (one option per configured `engine` half, or a `full-duplex`
   option for a lone `model`) and merges the agent's manifest over them **by

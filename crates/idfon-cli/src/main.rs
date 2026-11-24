@@ -22,6 +22,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 
+mod card;
 mod ux;
 use idfon_client::{Client, ClientError};
 use idfon_protocol::{
@@ -153,6 +154,9 @@ enum Command {
     Tag(TagCmd),
     /// What contacts see of you by default: presence ("Online") and your photo
     Visibility(VisibilityArgs),
+    /// Cards: a question with buttons (and fields) in someone's chat; read the answer
+    #[command(subcommand)]
+    Card(CardCmd),
     /// vCard exchange: export a card carrying the idfon ticket, import .vcf files
     #[command(subcommand)]
     Contact(ContactCmd),
@@ -269,6 +273,66 @@ enum TagCmd {
     Rename { name: String, to: String },
     /// Delete a tag (from every contact)
     Delete { name: String },
+}
+
+#[derive(Subcommand)]
+enum CardCmd {
+    /// Send a card: `idfon card send bob "Lunch?" --action yes=Yes --action no=No --wait`
+    Send(CardSendArgs),
+    /// Wait for the next answer to a card you sent (`--card compose` for + actions)
+    Wait {
+        /// Only answers from this peer
+        #[arg(value_name = "PEER")]
+        peer: Option<String>,
+        /// Only answers to this card id
+        #[arg(long)]
+        card: Option<String>,
+        /// How long to wait (default 5m)
+        #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "5m")]
+        timeout: Duration,
+    },
+}
+
+#[derive(clap::Args)]
+struct CardSendArgs {
+    /// Who to send to: a peer name, alias or id
+    #[arg(value_name = "PEER")]
+    peer: String,
+    /// The card's title
+    #[arg(value_name = "TITLE")]
+    title: String,
+    #[arg(long)]
+    subtitle: Option<String>,
+    /// A button: ID=TITLE (repeat for more)
+    #[arg(long = "action", value_name = "ID=TITLE")]
+    actions: Vec<String>,
+    /// Show this action's button as destructive (red)
+    #[arg(long = "danger", value_name = "ID")]
+    danger: Vec<String>,
+    /// A text field: ID=LABEL (repeat); what's typed comes back with the action
+    #[arg(long = "field", value_name = "ID=LABEL")]
+    fields: Vec<String>,
+    /// SF Symbol for the card, e.g. fork.knife
+    #[arg(long)]
+    glyph: Option<String>,
+    /// An https page the card opens
+    #[arg(long)]
+    url: Option<String>,
+    /// During a call with them, open it over their screen (the call companion)
+    #[arg(long)]
+    sheet: bool,
+    /// The card's id; send the same id again to change it in place
+    #[arg(long)]
+    id: Option<String>,
+    /// What kind of card (default: card)
+    #[arg(long, default_value = "card")]
+    kind: String,
+    /// Wait for their answer and print it
+    #[arg(long)]
+    wait: bool,
+    /// How long --wait waits (default 5m)
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "5m")]
+    timeout: Duration,
 }
 
 #[derive(clap::Args)]
@@ -1125,6 +1189,12 @@ fn run() -> io::Result<()> {
             call(socket, &rpc::IdentityRename { identity: None, name }, identity, cli.stdin_json)?,
             json,
         ),
+        Command::Card(CardCmd::Send(args)) => cmd_card_send(socket, &args, json, identity),
+        Command::Card(CardCmd::Wait { peer, card, timeout }) => {
+            let target = peer.as_deref().map(|peer| ux::resolve_peer(socket, identity, peer)).transpose()?;
+            let baseline = ux::latest_cursor(socket, identity);
+            print_answer(socket, identity, target.as_ref(), card.as_deref(), baseline, timeout, json)
+        }
         Command::Tag(TagCmd::List) => {
             let response = call(socket, &rpc::TagList {}, identity, cli.stdin_json)?;
             if json || !response.ok {
@@ -2743,6 +2813,113 @@ fn fetch_to(
 /// ticket to the peer through the message path (IDFON-DATA/1 envelope).
 /// Prints the bare BlobTicket once delivery is acknowledged.
 /// Text and signaled-blob modes of `send` (PEER required).
+fn cmd_card_send(socket: &str, args: &CardSendArgs, json: bool, identity: Option<&str>) -> io::Result<()> {
+    let id = args.id.clone().unwrap_or_else(|| {
+        format!(
+            "card-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock before epoch")
+                .as_nanos()
+        )
+    });
+    let mut actions = Vec::new();
+    for spec in &args.actions {
+        let (action, title) = card::split_pair(spec).map_err(io::Error::other)?;
+        let mut item = json!({"id": action, "title": title});
+        if args.danger.contains(&action) {
+            item["role"] = json!("destructive");
+        }
+        actions.push(item);
+    }
+    let mut fields = Vec::new();
+    for spec in &args.fields {
+        let (field, label) = card::split_pair(spec).map_err(io::Error::other)?;
+        fields.push(json!({"id": field, "label": label}));
+    }
+    let mut body = json!({"kind": args.kind, "id": id, "title": args.title});
+    if let Some(subtitle) = &args.subtitle {
+        body["subtitle"] = json!(subtitle);
+    }
+    if let Some(glyph) = &args.glyph {
+        body["glyph"] = json!(glyph);
+    }
+    if let Some(url) = &args.url {
+        body["detailURL"] = json!(url);
+    }
+    if !actions.is_empty() {
+        body["actions"] = Value::Array(actions);
+    }
+    if !fields.is_empty() {
+        body["fields"] = Value::Array(fields);
+    }
+    if args.sheet {
+        body["slot"] = json!("sheet");
+    }
+    let target = ux::resolve_peer(socket, identity, &args.peer)?;
+    let baseline = args.wait.then(|| ux::latest_cursor(socket, identity)).flatten();
+    let params = rpc::MessageSend {
+        peer: args.peer.clone(),
+        text: Some(card::card_envelope(&body)),
+        idempotency_key: format!("{id}-{}", std::process::id()),
+        conversation: None,
+        context: None,
+        capability_ticket: None,
+        retries: None,
+        delivery: None,
+    };
+    let response = call_plain(socket, &params, identity)?;
+    if !response.ok {
+        return finish(response, json);
+    }
+    if !args.wait {
+        if json {
+            println!("{}", json!({"card": id, "operation_id": result_str(&response, "operation_id")}));
+        } else {
+            println!("sent card {id} to {}", target.name);
+        }
+        return Ok(());
+    }
+    print_answer(socket, identity, Some(&target), Some(&id), baseline, args.timeout, json)
+}
+
+/// Wait for an `IDFON-UI-ACTION/1` and print it: `bob chose yes` plus one
+/// `field=value` line per typed field (`--json`: card, action, values, peer).
+fn print_answer(
+    socket: &str,
+    identity: Option<&str>,
+    target: Option<&idfon_protocol::Peer>,
+    card_id: Option<&str>,
+    baseline: Option<String>,
+    timeout: Duration,
+    json: bool,
+) -> io::Result<()> {
+    let event = ux::wait_message(socket, identity, baseline, timeout, |event| {
+        let data = &event["data"];
+        let from_target = target.is_none_or(|peer| ux::peer_matches(peer, data["peer_id"].as_str().unwrap_or("")));
+        let answer = card::parse_answer(data["text"].as_str().unwrap_or(""));
+        from_target && answer.is_some_and(|answer| card_id.is_none_or(|id| answer.card == id))
+    })?;
+    let Some(event) = event else {
+        return Err(io::Error::other(format!("no answer within {}s", timeout.as_secs())));
+    };
+    let peer = event["data"]["peer_id"].as_str().unwrap_or_default().to_owned();
+    let answer = card::parse_answer(event["data"]["text"].as_str().unwrap_or("")).expect("matched an answer");
+    if json {
+        println!(
+            "{}",
+            json!({"peer": peer, "card": answer.card, "action": answer.action, "values": answer.values})
+        );
+        return Ok(());
+    }
+    let who = target.map(|peer| peer.name.clone()).unwrap_or(peer);
+    println!("{who} chose {} (card {})", answer.action, answer.card);
+    for (field, value) in &answer.values {
+        println!("{field}={}", value.as_str().unwrap_or_default());
+    }
+    Ok(())
+}
+
 fn send_payload(
     socket: &str,
     stdin_json: bool,
