@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "eve-idfon"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2354,7 +2354,7 @@ checksum = "dfdd7caa900436d8f13b2346fe10257e0c05c1f1f9e351f4f5d57c03bd5f45da"
 
 [[package]]
 name = "idfon-cli"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "clap",
  "idfon-client",
@@ -2366,7 +2366,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-client"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "idfon-config",
  "idfon-protocol",
@@ -2377,7 +2377,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-config"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "toml",
  "toml_edit",
@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-core"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -2409,7 +2409,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-director"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2424,7 +2424,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-h3"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "axum",
  "http",
@@ -2437,7 +2437,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-live-media"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2457,7 +2457,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-mcp-server"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2469,7 +2469,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-media"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2491,7 +2491,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-protocol"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "base64 0.23.1",
  "serde",
@@ -2501,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-radio"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2511,7 +2511,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-telemetry"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-voice"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -2539,7 +2539,7 @@ dependencies = [
 
 [[package]]
 name = "idfon-voice-agent"
-version = "0.12.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
