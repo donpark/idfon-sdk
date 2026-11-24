@@ -6,7 +6,7 @@ description: Use the idfon CLI to message contacts, send and receive files, shar
 # idfon CLI
 
 `idfon` talks to a local daemon, which it starts automatically. You act as
-one **identity**; the people and agents you talk to are **peers**. Name a
+one **identity** (one you); the people and agents you talk to are **peers**. Name a
 peer by its name, alias or id anywhere a command takes `PEER`.
 Commands print short human text; add `--json` for machine output.
 
@@ -39,7 +39,10 @@ idfon room send team "standup"
 idfon access check bob [CAPABILITY] # may you message bob? (default message.send)
 idfon access grant bob              # allow sending to and receiving from bob
 idfon access ticket bob --expires 2026-12-31   # a ticket that lets bob message you
-idfon identity list | create NAME | use NAME   # your identities
+idfon identity rename "Ann Lee"     # your name (there is one identity)
+idfon tag add bob Work              # tag a contact; filters and what they see
+idfon tag set Work --hide-presence  # Work contacts can't see when you're online
+idfon visibility --photo off        # hide your photo from everyone by default
 ```
 
 ## Notes

@@ -145,9 +145,14 @@ enum Command {
     Doctor,
     /// Stop the background daemon
     Shutdown,
-    /// Manage identities
+    /// You: your name (there is one identity; contacts get tags instead)
     #[command(subcommand)]
     Identity(IdentityCmd),
+    /// Tags on contacts (Work, Family…) and what each tag lets contacts see
+    #[command(subcommand)]
+    Tag(TagCmd),
+    /// What contacts see of you by default: presence ("Online") and your photo
+    Visibility(VisibilityArgs),
     /// vCard exchange: export a card carrying the idfon ticket, import .vcf files
     #[command(subcommand)]
     Contact(ContactCmd),
@@ -232,14 +237,48 @@ enum WebCmd {
 
 #[derive(Subcommand)]
 enum IdentityCmd {
-    /// List identities
+    /// Show your identity (there is one)
     List,
-    /// Switch the active identity
-    Use { name: String },
-    /// Create an identity
-    Create { name: String },
-    /// Delete an identity
+    /// Change your name (what your card shows)
+    Rename { name: String },
+}
+
+#[derive(Subcommand)]
+enum TagCmd {
+    /// List tags: contacts carrying each, and what it hides
+    List,
+    /// Put a tag on a contact: `idfon tag add bob Work`
+    Add { peer: String, tag: String },
+    /// Take a tag off a contact
+    Remove { peer: String, tag: String },
+    /// Create a tag or change what its contacts can't see
+    Set {
+        name: String,
+        /// Hide when you're online from contacts with this tag
+        #[arg(long, conflicts_with = "show_presence")]
+        hide_presence: bool,
+        #[arg(long)]
+        show_presence: bool,
+        /// Hide your photo from contacts with this tag
+        #[arg(long, conflicts_with = "show_photo")]
+        hide_photo: bool,
+        #[arg(long)]
+        show_photo: bool,
+    },
+    /// Rename a tag everywhere
+    Rename { name: String, to: String },
+    /// Delete a tag (from every contact)
     Delete { name: String },
+}
+
+#[derive(clap::Args)]
+struct VisibilityArgs {
+    /// Show when you're online: on | off (omit to just print)
+    #[arg(long, value_parser = ["on", "off"])]
+    presence: Option<String>,
+    /// Show your photo: on | off
+    #[arg(long, value_parser = ["on", "off"])]
+    photo: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -1082,18 +1121,84 @@ fn run() -> io::Result<()> {
             }
             Ok(())
         }
-        Command::Identity(IdentityCmd::Use { name }) => finish(
-            call(socket, &rpc::IdentityUse { name }, identity, cli.stdin_json)?,
+        Command::Identity(IdentityCmd::Rename { name }) => finish(
+            call(socket, &rpc::IdentityRename { identity: None, name }, identity, cli.stdin_json)?,
             json,
         ),
-        Command::Identity(IdentityCmd::Create { name }) => finish(
-            call(socket, &rpc::IdentityCreate { name }, identity, cli.stdin_json)?,
+        Command::Tag(TagCmd::List) => {
+            let response = call(socket, &rpc::TagList {}, identity, cli.stdin_json)?;
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let tags = ux::ok_result(response)?["tags"].as_array().cloned().unwrap_or_default();
+            if tags.is_empty() {
+                eprintln!("no tags yet (add one with `idfon tag add bob Work`)");
+            }
+            for tag in tags {
+                let mut hides = Vec::new();
+                if tag["hide_presence"] == true { hides.push("presence"); }
+                if tag["hide_photo"] == true { hides.push("photo"); }
+                println!(
+                    "{}  {} contact(s){}",
+                    tag["name"].as_str().unwrap_or("?"),
+                    tag["count"].as_u64().unwrap_or(0),
+                    if hides.is_empty() { String::new() } else { format!("  hides: {}", hides.join(", ")) }
+                );
+            }
+            Ok(())
+        }
+        Command::Tag(TagCmd::Add { peer, tag }) => finish(
+            call(socket, &rpc::PeerUpdate { peer, add_tag: Some(tag), ..Default::default() }, identity, cli.stdin_json)?,
             json,
         ),
-        Command::Identity(IdentityCmd::Delete { name }) => finish(
-            call(socket, &rpc::IdentityDelete { name }, identity, cli.stdin_json)?,
+        Command::Tag(TagCmd::Remove { peer, tag }) => finish(
+            call(socket, &rpc::PeerUpdate { peer, remove_tag: Some(tag), ..Default::default() }, identity, cli.stdin_json)?,
             json,
         ),
+        Command::Tag(TagCmd::Set { name, hide_presence, show_presence, hide_photo, show_photo }) => finish(
+            call(
+                socket,
+                &rpc::TagSet {
+                    name,
+                    hide_presence: if hide_presence { Some(true) } else if show_presence { Some(false) } else { None },
+                    hide_photo: if hide_photo { Some(true) } else if show_photo { Some(false) } else { None },
+                },
+                identity,
+                cli.stdin_json,
+            )?,
+            json,
+        ),
+        Command::Tag(TagCmd::Rename { name, to }) => finish(
+            call(socket, &rpc::TagRename { name, to }, identity, cli.stdin_json)?,
+            json,
+        ),
+        Command::Tag(TagCmd::Delete { name }) => finish(
+            call(socket, &rpc::TagDelete { name }, identity, cli.stdin_json)?,
+            json,
+        ),
+        Command::Visibility(args) => {
+            let response = if args.presence.is_none() && args.photo.is_none() {
+                call(socket, &rpc::VisibilityGet {}, identity, cli.stdin_json)?
+            } else {
+                call(
+                    socket,
+                    &rpc::VisibilitySet {
+                        presence: args.presence.as_deref().map(|value| value == "on"),
+                        photo: args.photo.as_deref().map(|value| value == "on"),
+                    },
+                    identity,
+                    cli.stdin_json,
+                )?
+            };
+            if json || !response.ok {
+                return finish(response, json);
+            }
+            let visibility = &ux::ok_result(response)?["visibility"];
+            let word = |value: &serde_json::Value| if value == true { "shown" } else { "hidden" };
+            println!("presence: {}", word(&visibility["presence"]));
+            println!("photo: {}", word(&visibility["photo"]));
+            Ok(())
+        }
         Command::Peer(PeerCmd::List) => {
             let response = call(socket, &rpc::PeerList {}, identity, cli.stdin_json)?;
             if json || !response.ok {
@@ -1179,6 +1284,7 @@ fn run() -> io::Result<()> {
                     // param is present (an empty list used to wipe them).
                     aliases: (!aliases.is_empty()).then_some(aliases),
                     call_mode,
+                    ..Default::default()
                 },
                 identity,
                 cli.stdin_json,

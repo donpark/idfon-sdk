@@ -5,8 +5,9 @@ set -eu
 # command and flag not already covered by the specialized e2e scripts
 # (stream-e2e.sh / fanout-e2e.sh cover live streaming; this covers the rest).
 #
-# Verified: status, shutdown, identity (create/use/delete/list + --identity
-# flag), peer (add/list/show/resolve/status/update/remove), access
+# Verified: status, shutdown, identity (list/rename; create/delete refused),
+# tag (add/list/set/rename/remove/delete), visibility, peer
+# (add/list/show/resolve/status/update/remove), access
 # (allow/check/ticket), send --text (+ --idempotency-key), send --file,
 # recv (+ --out/--from), put (+ --resource-id/--json), get, events (+ --type),
 # wait, operation (get/wait/cancel), --json envelopes, and documented failure
@@ -83,27 +84,16 @@ S=$(Q "$A" status --json)
 echo "$S" | jq -e '.ok == true and .result.ready == true and .result.identity.name' >/dev/null
 echo "PASS: status --json envelope"
 
-# --- identity ---------------------------------------------------------------
+# --- identity: one you (docs/identity.md in idfon-core) -----------------------
 ORIG_ID=$(echo "$S" | jq -r '.result.identity.name')
 ok "identity list" Q "$A" identity list --json
-ok "identity create travel" Q "$A" identity create travel --json
-fails "identity create case-only duplicate" Q "$A" identity create Travel --json
-Q "$A" identity list --json | jq -e --arg orig "$ORIG_ID" \
-  '[.result.identities[].name] | index("travel") and index($orig)' >/dev/null
-echo "PASS: identity list shows created + original"
-ok "identity use travel" Q "$A" identity use travel --json
-Q "$A" identity list --json | jq -e '.result.identities | map(select(.name == "travel" and .active == true)) | length == 1' >/dev/null
-echo "PASS: identity use switches active"
-S=$(Q "$A" status --json)   # fresh invocation: session identity = active identity
-echo "$S" | jq -e '.result.identity.name == "travel"' >/dev/null
-echo "PASS: status reflects active identity across invocations"
-S=$(Q "$A" --identity travel status --json)
-echo "$S" | jq -e '.result.identity.name == "travel"' >/dev/null
-echo "PASS: --identity flag selects identity"
-fails "identity delete active" Q "$A" identity delete travel --json
-ok "identity --identity flag" Q "$A" --identity "$ORIG_ID" status --json
-ok "identity use back" Q "$A" identity use "$ORIG_ID" --json
-ok "identity delete travel" Q "$A" identity delete travel --json
+Q "$A" identity list --json | jq -e '.result.identities | length == 1' >/dev/null
+echo "PASS: one identity"
+ok "identity rename" Q "$A" identity rename "Ann Example" --json
+Q "$A" status --json | jq -e '.result.identity.name == "Ann Example"' >/dev/null
+echo "PASS: identity rename shows in status"
+ok "identity rename back" Q "$A" identity rename "$ORIG_ID" --json
+fails "identity create refused" Q "$A" rpc identity.create '{"name":"travel"}' --json
 
 # --- peer -------------------------------------------------------------------
 A_EP=$(Q "$A" status --json | jq -r .result.identity.endpoint_id)
@@ -126,6 +116,28 @@ S=$(Q "$A" peer show robert --json)
 echo "$S" | jq -e '.result.peer.name == "robert"' >/dev/null
 echo "PASS: peer update visible in show"
 ok "peer update name back" Q "$A" peer update robert --name bob --json
+
+# --- tags and visibility ------------------------------------------------------
+ok "tag add" Q "$A" tag add bob Work --json
+Q "$A" peer show bob --json | jq -e '.result.peer.tags == ["Work"]' >/dev/null
+echo "PASS: tag on contact"
+ok "tag set hides presence" Q "$A" tag set Work --hide-presence --json
+Q "$A" tag list --json | jq -e '.result.tags | map(select(.name == "Work" and .count == 1 and .hide_presence == true)) | length == 1' >/dev/null
+echo "PASS: tag list"
+Q "$A" rpc visibility.audience '{"aspect":"presence"}' --json | jq -e '.result.peers | length == 0' >/dev/null
+Q "$A" rpc visibility.audience '{"aspect":"photo"}' --json | jq -e '.result.peers | length == 1' >/dev/null
+echo "PASS: Work hides presence from bob, not the photo"
+ok "visibility off" Q "$A" visibility --photo off --json
+Q "$A" visibility --json | jq -e '.result.visibility.photo == false and .result.visibility.presence == true' >/dev/null
+echo "PASS: visibility defaults"
+ok "visibility on" Q "$A" visibility --photo on --json
+ok "tag rename" Q "$A" tag rename Work Office --json
+Q "$A" peer show bob --json | jq -e '.result.peer.tags == ["Office"]' >/dev/null
+echo "PASS: tag rename reaches contacts"
+ok "tag remove" Q "$A" tag remove bob Office --json
+ok "tag delete" Q "$A" tag delete Office --json
+Q "$A" tag list --json | jq -e '.result.tags | length == 0' >/dev/null
+echo "PASS: tag delete"
 fails "peer show missing" Q "$A" peer show nobody --json
 fails "peer resolve missing" Q "$A" peer resolve nobody --json
 fails "peer status missing" Q "$A" peer status nobody --json
