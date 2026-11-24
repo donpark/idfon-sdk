@@ -50,7 +50,7 @@ does, the config default applies.
 
 ## Menu contact: an OPML catalogue of shows
 
-The broadcast station serves many callers at one shared position. The menu
+The broadcast station serves callers at one shared, clock-synced position (scheduled programmes only; live sources are per call, see **Limits**). The menu
 contact serves one caller: it is configured with an OPML resource — a nested
 outline of shows, parsed by `crates/idfon-radio/src/menu.rs` — and the caller
 plays one show on demand. OPML is data; **the app renders the menu** (decided
@@ -316,111 +316,6 @@ pairing a phone currently needs `devicectl`. The fix is to let the contact card
 (or a station-sent invite) carry the ticket; that is an app change, not a
 protocol gap.
 
-## Repeat mode (start here)
-
-One clip, looped forever. That is a complete station, and it is the jockey in
-repeat mode: it plays, it does not speak.
-
-```sh
-node scripts/radio-program.mjs fallback my-clip.mp3 --instance radio-tech
-scripts/radio-serve.sh "tech talk"
-```
-
-`fallback` converts with ffmpeg to the 24 kHz mono profile and replaces any
-previous clip; the backend loops it whenever no slot is active (with no
-schedule, always). A repeat-mode call still logs everything a soak needs — the
-one `fallback` slot, a heartbeat a second, and any agent-side stall.
-
-It is also the **most comparable** soak: every run plays identical audio, so a
-walk before a change and a walk after it differ only in the thing you changed.
-Programming buys realism and spends that comparability — use repeat mode to
-measure, programming to listen.
-
-## Programming (optional)
-
-Additive on top of repeat mode: slots override the loop while they are active.
-
-```
-submit  (a clip, or just a pitch) ──▶ submissions.jsonl ─┐
-find    (episodes on the brief)   ──▶ candidates.jsonl  ─┴─▶ compile ─▶ schedule.json ─▶ call
-```
-
-`scripts/radio-program.mjs` owns all three steps. Only `find` searches and only
-`compile` fetches audio; the hold-up between them is deliberate, so scheduling
-is reproducible and reviewable.
-
-```sh
-cd <repo root>     # config and schedule paths are cwd-relative
-
-# Direct submission: a clip airs in its preferred slot.
-node scripts/radio-program.mjs submit my-segment.wav \
-  --at 07:00 --days mon,wed --topic "tech talk" --note "school-run pitch"
-
-# Indirect submission: no clip, a topic. compile pairs it with an episode.
-node scripts/radio-program.mjs submit --at 19:30 --topic wildlife \
-  --note "evening: pair with an episode" --submitter alice
-
-# Search the brief (or --topic "a,b") for episodes; nothing is scheduled yet.
-node scripts/radio-program.mjs find --limit 8
-
-# Merge into the schedule, converting whatever was paired (ffmpeg).
-node scripts/radio-program.mjs compile        # --no-fetch to plan only
-```
-
-Then serve the contact — one station per topic (`-e` below), or the single
-shared one:
-
-```sh
-scripts/radio-serve.sh "tech talk"     # roster station, own state + identity
-scripts/radio-serve.sh radio-wildlife  # ... by instance
-
-# single station, shared agents/radio paths (no roster):
-EVE_AGENT=llm EVE_INSTANCE=radio EVE_LIVE_CONFIG=agents/radio/live.json \
-  scripts/live-voice-serve.sh
-```
-
-Pair the printed ticket as an agent contact, then call it and walk (iOS:
-see **Pairing the iPhone** below).
-
-### Pairing the iPhone
-
-The holder admits senders by **endpoint id** (`--allow`, from the Mac daemon's
-peer list plus `capability-ticket-<endpoint>.json`). An iPhone has its own
-identity, so it is not in that list until it is registered — and the app needs a
-capability ticket subject-bound to *its* id, not the Mac's.
-
-1. Start the station and keep the printed `contact:` JSON (the `pairing:` block
-   shows the same commands for the local apps).
-2. Add the contact, which also logs the phone's own id:
-
-   ```sh
-   xcrun devicectl device process launch --console <udid> com.idfon.ios -- \
-     -pair '<contact JSON>' "Tech Talk" -pair-exit
-   ```
-
-   The app prints `idfon self ticket: {… "endpoint_id": "<ios-id>" …}`.
-3. Restart the station admitting that id — it mints the ticket and prints the
-   `capability-ticket-<ios-id>.json` line:
-
-   ```sh
-   scripts/radio-serve.sh "tech talk" <ios-id>
-   ```
-
-4. Install the ticket (the serve output has the exact token):
-
-   ```sh
-   xcrun devicectl device process launch --console <udid> com.idfon.ios -- \
-     -pair-ticket <holder endpoint id> '<ticket token>' -pair-exit
-   ```
-
-5. Launch normally and call it: a `broadcast` contact renders as a one-way
-   listen call, not a chat turn.
-
-**Gap:** there is no in-app paste for an agent's capability ticket — only
-`-pair-ticket` at launch, or the chat invite path (`IDFON-INVITE/1`, which
-`ChatStore` accepts) that the agency uses. Stations do not send invites yet, so
-pairing a phone currently needs `devicectl`.
-
 ## Submissions: direct and indirect
 
 A submission is shaped like a **radio programme submission** — a tape and a
@@ -658,11 +553,12 @@ simply drops whatever it hears.
 
 ## Limits
 
-- **Live stations are not supported.** MP3/AAC over ICY or HLS needs a decoder
-  (and HLS a demuxer); `stream.rs` carries the `shortcut:` note and the upgrade
-  condition. Search results are therefore *episodes*, not live streams: a live
-  station has no time slots to schedule. Fetch first, then replay — which is
-  also reproducible.
+- **Live sources are per call, not shared.** ffmpeg plays far-end streams
+  (HLS, ICY/MP3, AAC; `stream.rs` `run_stream`), but each call opens its own
+  source, and the voice-agent runner keeps one active call (a new call replaces
+  it). Only clock-synced programmes give every caller the same position. A
+  persistent shared broadcaster is donpark/idfon#122. Scheduled slots still take
+  fetched *episodes*: a live station has no time slots to schedule.
 - **Disk and memory are real.** 24 kHz mono s16 is ~173 MB per hour; a slot
   clip is loaded whole when the slot starts. Fine for a home soak, not for a
   week of programming.
