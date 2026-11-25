@@ -193,6 +193,13 @@ print(match.group(1) if match else "")
 PY
 )
 fi
+# An agent that sends a page bundles it first (agents/feedback/page/build.mjs).
+if [ -f "$agent_dir/page/build.mjs" ]; then
+  (cd "$agent_dir" && node page/build.mjs >"$home/page-build.log" 2>&1) || {
+    echo "page build failed; see $home/page-build.log" >&2
+    exit 1
+  }
+fi
 # Build in place when missing or stale (`pnpm agent build` does the same).
 if [ ! -d "$agent_dir/.output" ] || [ "$compiled_model" != "$model" ] || \
    [ "${FORCE_BUILD:-}" = 1 ] || \
