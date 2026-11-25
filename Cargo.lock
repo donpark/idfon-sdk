@@ -2830,9 +2830,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-gossip"
-version = "0.102.0"
+version = "0.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f78267c0d936a3f51b8aa24419a7a267e42d1800ac99315f48045f2540c57922"
+checksum = "74c4170847b5603f489c4d7771f1e7b263fa63a2521dbbb747601931987aa777"
 dependencies = [
  "blake3",
  "bytes",
@@ -2843,7 +2843,6 @@ dependencies = [
  "iroh",
  "iroh-base",
  "iroh-metrics",
- "irpc",
  "n0-error",
  "n0-future",
  "postcard",
