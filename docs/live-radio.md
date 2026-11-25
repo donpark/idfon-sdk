@@ -601,7 +601,7 @@ simply drops whatever it hears.
   (HLS, ICY/MP3, AAC; `stream.rs` `run_stream`), but each call opens its own
   source, and the voice-agent runner keeps one active call (a new call replaces
   it). Only clock-synced programmes give every caller the same position. A
-  persistent shared broadcaster is donpark/idfon#122. Scheduled slots still take
+  persistent shared broadcaster is donpark/idfon-legacy#122. Scheduled slots still take
   fetched *episodes*: a live station has no time slots to schedule.
 - **Disk and memory are real.** 24 kHz mono s16 is ~173 MB per hour; a slot
   clip is loaded whole when the slot starts. Fine for a home soak, not for a

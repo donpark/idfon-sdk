@@ -934,7 +934,7 @@ Linux/x86_64, so Apple-first uses MLX or Pocket TTS on CPU.
 
 ## Phasing
 
-Tracked on GitHub: epic **#17**, phases **#18–#25** (`donpark/idfon`).
+Tracked on GitHub: epic **#17**, phases **#18–#25** (`donpark/idfon-legacy`).
 
 - **P0 — couple first, record-only.** **Implemented** (2026-10-01): durable
   holder-side record buffer, idempotent bridge drain, `eve-idfon` dynamic

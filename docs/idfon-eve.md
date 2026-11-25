@@ -1,6 +1,6 @@
 # idfon as an Eve Ingress Channel
 
-> **Status:** implemented through M0–M5; the iOS text-demo follow-up is tracked in [#11](https://github.com/donpark/idfon/issues/11). Companion to
+> **Status:** implemented through M0–M5; the iOS text-demo follow-up is tracked in [#11](https://github.com/donpark/idfon-legacy/issues/11). Companion to
 > `docs/mcp-transport.md` (idfon's tool transport).
 > Written 2026-09-14; revised 2026-09-14 (replies-over-iroh, Slack mapping,
 > no-public-endpoint property); revised 2026-10-07 dropping the borrowed
