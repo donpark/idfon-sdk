@@ -2063,6 +2063,8 @@ fn cmd_contact_export(
                 label: Some(peer.name),
                 device_class: None,
                 capabilities: vec![],
+                // Their "Ask Before Sharing" preference travels with the card.
+                share: peer.share.clone(),
             }
         }
     };
