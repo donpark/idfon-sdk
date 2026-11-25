@@ -25,7 +25,7 @@ idfon-protocol = { path = "../../../idfon-core/crates/idfon-protocol" }
 idfon-telemetry = { path = "../../../idfon-core/crates/idfon-telemetry", features = ["otlp"] }
 idfon-voice = { path = "../../../idfon-core/crates/idfon-voice" }
 iroh = "1"
-iroh-blobs = "0.104"
+iroh-blobs = "0.105"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
