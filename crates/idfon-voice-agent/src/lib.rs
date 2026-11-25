@@ -50,6 +50,11 @@ pub use stream::StreamFactory;
 /// The async result of running one backend for one call.
 pub type BackendFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 
+/// `key=value` lines a backend adds to the return leg's start control.
+pub type StartLines = Vec<(&'static str, String)>;
+/// The async result of [`VoiceBackend::prepare`].
+pub type PrepareFuture<'a> = Pin<Box<dyn Future<Output = StartLines> + Send + 'a>>;
+
 /// One voice engine behind the voice-agent seam.
 ///
 /// A backend owns one call's audio loop; it may be duplex (a model session) or
@@ -57,6 +62,12 @@ pub type BackendFuture<'a> = Pin<Box<dyn Future<Output = Result<()>> + Send + 'a
 /// are handed to it in [`VoiceMedia`].
 pub trait VoiceBackend: Send {
     fn name(&self) -> &str;
+    /// Resolve what the holder's answer reports before it is sent: lines for
+    /// the return leg's start control (the stream backend's on-demand
+    /// `position=`/`duration=`). Most backends add none.
+    fn prepare(&mut self) -> PrepareFuture<'_> {
+        Box::pin(std::future::ready(Vec::new()))
+    }
     fn run(&mut self, media: VoiceMedia) -> BackendFuture<'_>;
 }
 
@@ -641,6 +652,8 @@ async fn handle_call(
         None => EndpointAddr::new(endpoint_id),
     };
 
+    // Resolved while the previous call (if any) still plays.
+    let start_lines = backend.prepare().await;
     stop_active_call("replaced by a newer call");
     let session = CallSession::start(
         &caller_addr,
@@ -650,6 +663,7 @@ async fn handle_call(
         &ctx.key,
         profile,
         &config.broadcast,
+        &start_lines,
     )
     .await
     .context("start voice-agent call")?;

@@ -252,7 +252,9 @@ impl AudioQueue {
         self.samples.lock().map(|samples| samples.len()).unwrap_or(0)
     }
 
-    fn fill(&self, output: &mut [i16]) -> usize {
+    /// Take the next `output.len()` samples, zero-padding a shortfall (the
+    /// publisher's read). Returns how many were missing.
+    pub fn fill(&self, output: &mut [i16]) -> usize {
         let Ok(mut samples) = self.samples.lock() else {
             output.fill(0);
             return output.len();
@@ -280,10 +282,25 @@ pub struct CallSession {
     publisher: tokio::task::JoinHandle<()>,
 }
 
+/// The return leg's start control: the holder's answer, flagged `return=1`.
+/// `extra` appends backend-specific `key=value` lines (the stream backend's
+/// on-demand `position=`/`duration=`, see `docs/live-radio.md`).
+pub fn return_start_text(own_ticket: &str, profile: AudioProfile, extra: &[(&str, String)]) -> String {
+    let mut text = format!(
+        "IDFON-LIVE/1\naction=start\nticket={own_ticket}\nreturn=1\naudio_codec={}\naudio_sample_rate={}",
+        profile.codec, profile.sample_rate
+    );
+    for (key, value) in extra {
+        text.push_str(&format!("\n{key}={value}"));
+    }
+    text
+}
+
 impl CallSession {
     /// Publish the return leg, sign the return-leg invite, and send it to the
     /// caller. The `Live` handle is kept alive for the whole call (dropping it
-    /// early kills subscriber sessions).
+    /// early kills subscriber sessions). `extra` lines ride the return start
+    /// ([`return_start_text`]).
     #[allow(clippy::too_many_arguments)]
     pub async fn start(
         caller_addr: &EndpointAddr,
@@ -293,6 +310,7 @@ impl CallSession {
         key: &IdentityKey,
         profile: AudioProfile,
         broadcast_name: &str,
+        extra: &[(&str, String)],
     ) -> Result<Self> {
         let endpoint = EndpointConfig::from_env()
             .context("live endpoint config")?
@@ -323,10 +341,7 @@ impl CallSession {
             holder_endpoint_id.to_string(),
             format!("eve_call_return_{call_id}"),
             MessageContent::Text {
-                text: format!(
-                    "IDFON-LIVE/1\naction=start\nticket={own_ticket}\nreturn=1\naudio_codec={}\naudio_sample_rate={}",
-                    profile.codec, profile.sample_rate
-                ),
+                text: return_start_text(&own_ticket, profile, extra),
             },
             format!("eve-call-{caller_peer_id}-return-{call_id}"),
             None,
@@ -687,6 +702,27 @@ mod tests {
         assert_eq!(invite.audio_sample_rate, Some(24_000));
         assert_eq!(invite.stt, None);
         assert!(parse_invite("hello").is_none());
+    }
+
+    #[test]
+    fn return_start_appends_backend_lines() {
+        let profile = AudioProfile {
+            codec: AudioCodec::Pcm,
+            sample_rate: 24_000,
+        };
+        let plain = return_start_text("ilv1:t", profile, &[]);
+        assert_eq!(
+            plain,
+            "IDFON-LIVE/1\naction=start\nticket=ilv1:t\nreturn=1\naudio_codec=pcm\naudio_sample_rate=24000"
+        );
+        let resumed = return_start_text(
+            "ilv1:t",
+            profile,
+            &[("position", "754.2".into()), ("duration", "1800.0".into())],
+        );
+        assert_eq!(resumed, format!("{plain}\nposition=754.2\nduration=1800.0"));
+        // The answer still parses as a start (the caller's own reader).
+        assert!(parse_invite(&resumed).expect("start").is_start);
     }
 
     #[test]

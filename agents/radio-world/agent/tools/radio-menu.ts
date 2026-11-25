@@ -9,9 +9,10 @@ import { emitEnvelope } from "eve-idfon/outbox";
 // agent", docs/reply-blocks.md). Deterministic on purpose: the OPML catalogue
 // is data, and the caller picks from the menu — the model never restates it.
 //
-// A pick dispatches `idfon.call` with the entry's `show=` path under `value`
-// (the app dials the call that plays it; hanging up stops it). The inline
-// `Input` under the menu sends typed requests back as a plain message.
+// A pick dispatches `idfon.play` with the entry's `show=` path under `value`
+// (the app plays that channel/show; a channel is played, never called, and
+// Stop turns it off). The inline `Input` under the menu sends typed requests
+// back as a plain message.
 
 const MENU_PATH = process.env.IDFON_RADIO_MENU ?? "shows.opml";
 
@@ -107,7 +108,7 @@ export default defineTool({
       },
       [ids.menu]: {
         type: "Menu",
-        props: { action: "idfon.call" },
+        props: { action: "idfon.play" },
         children: shown.map((_, i) => `menu-item-${i}`),
       },
       [ids.input]: {

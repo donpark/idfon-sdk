@@ -11,11 +11,57 @@
 //! shortcut: no MP3/ICY/HLS decoding here. A transport adapter (HLS) brings its
 //! own demuxer and hands its frames to the same [`crate::Programme`] port.
 
-use std::path::Path;
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+};
 
 use anyhow::{ensure, Context, Result};
 
 use crate::{FRAME_SAMPLES, OUTPUT_RATE};
+
+/// A clip's length in seconds from its WAV headers alone, without reading the
+/// samples (a cached show can run to hundreds of MB). Same format rules as
+/// [`read_wav`].
+pub fn clip_seconds(path: &Path) -> Result<f64> {
+    let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut riff = [0u8; 12];
+    file.read_exact(&mut riff)
+        .with_context(|| format!("{} is not a RIFF/WAVE file", path.display()))?;
+    ensure!(
+        &riff[0..4] == b"RIFF" && &riff[8..12] == b"WAVE",
+        "{} is not a RIFF/WAVE file",
+        path.display()
+    );
+    let mut channels = None;
+    let mut header = [0u8; 8];
+    while file.read_exact(&mut header).is_ok() {
+        let size = u32::from_le_bytes(header[4..8].try_into()?) as u64;
+        if &header[0..4] == b"fmt " {
+            ensure!(size >= 16, "{} has a short fmt chunk", path.display());
+            let mut fmt = [0u8; 16];
+            file.read_exact(&mut fmt)?;
+            let kind = u16::from_le_bytes(fmt[0..2].try_into()?);
+            let of_channels = u16::from_le_bytes(fmt[2..4].try_into()?);
+            let rate = u32::from_le_bytes(fmt[4..8].try_into()?);
+            let bits = u16::from_le_bytes(fmt[14..16].try_into()?);
+            ensure!(kind == 1 && bits == 16 && of_channels >= 1, "only 16-bit PCM WAV is supported");
+            ensure!(rate == OUTPUT_RATE, "resample to {OUTPUT_RATE} Hz first (got {rate} Hz)");
+            channels = Some(u64::from(of_channels));
+            file.seek(SeekFrom::Current((size - 16 + (size & 1)) as i64))?;
+        } else if &header[0..4] == b"data" {
+            let channels = channels.with_context(|| format!("{} has no fmt chunk before its data", path.display()))?;
+            // A truncated file holds fewer samples than its header claims.
+            let left = file.metadata()?.len().saturating_sub(file.stream_position()?);
+            let samples = size.min(left) / (2 * channels);
+            return Ok(samples as f64 / f64::from(OUTPUT_RATE));
+        } else {
+            file.seek(SeekFrom::Current((size + (size & 1)) as i64))?;
+        }
+    }
+    anyhow::bail!("{} has no data chunk", path.display())
+}
 
 /// A WAV clip as 24 kHz mono s16, padded to whole 20 ms frames so looping
 /// never splits a sample.
@@ -123,6 +169,19 @@ mod tests {
         let path = temp("stereo", &wav(&[100, 300, -100, 100], OUTPUT_RATE, 2));
         assert_eq!(read_wav(&path).expect("decode")[..2], [200, 0]);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn measures_a_clip_from_its_headers() {
+        let path = temp("seconds", &wav(&vec![0; 36_000], OUTPUT_RATE, 1));
+        assert_eq!(clip_seconds(&path).expect("seconds"), 1.5);
+        let stereo = temp("seconds-stereo", &wav(&vec![0; 48_000], OUTPUT_RATE, 2));
+        assert_eq!(clip_seconds(&stereo).expect("seconds"), 1.0);
+        let other = temp("seconds-44k", &wav(&[0; 4], 44_100, 1));
+        assert!(clip_seconds(&other).is_err());
+        for path in [path, stereo, other] {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]

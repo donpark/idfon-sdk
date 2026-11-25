@@ -9,12 +9,19 @@
 //! Advertised as `voice_route.mode = broadcast`: an idfon caller listens.
 //! A menu pick is a rotation: when a station plays out (or drops and cannot be
 //! retried) the next playable entry takes over, so the call keeps going.
+//! An on-demand pick (a cached file, or a far-end source with a length)
+//! resumes at the caller's `position=` and the answer reports where it started
+//! and how long it runs; a live source plays from now (`docs/live-radio.md`).
 
 use std::{
+    collections::HashMap,
     fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, OnceLock,
+    },
     time::{Duration, Instant},
 };
 
@@ -29,7 +36,9 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::time::MissedTickBehavior;
 
-use crate::{BackendFuture, VoiceBackend, VoiceBackendFactory, VoiceMedia};
+use crate::{
+    BackendFuture, PrepareFuture, StartLines, VoiceBackend, VoiceBackendFactory, VoiceMedia,
+};
 
 /// Top the return leg up to this depth (~100 ms) each tick. Pacing off the
 /// queue rather than a clock position cannot drift from the media publisher,
@@ -51,6 +60,12 @@ const SEARCH_EVERY: Duration = Duration::from_secs(30);
 /// A directory search includes liveness probes; give it room, not forever.
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(20);
 const OUTPUT_RATE: u32 = idfon_radio::OUTPUT_RATE;
+/// A resume this close to the end of a show (or past it) replays it from the
+/// top: the listener finished it.
+const RESUME_TAIL_S: f64 = 5.0;
+/// How long a far-end source may take to say whether it has a length; no
+/// answer in time plays it as live.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `backend: "stream"` — one factory per runner, one backend per call.
 pub struct StreamFactory;
@@ -67,7 +82,47 @@ enum Play {
         /// The agent's repo root when it exposes the station search script;
         /// `None` keeps the committed menu as the only source.
         search_root: Option<PathBuf>,
+        /// The caller's `position=` for their pick, in seconds.
+        position: f64,
+        /// Where the pick starts once [`StreamBackend::prepare`] measured it;
+        /// `None` plays from the top (a live source, or not measured).
+        resume: Option<OnDemand>,
     },
+}
+
+/// An on-demand show's start: the second it starts at and its length. Live
+/// sources have neither.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct OnDemand {
+    position: f64,
+    duration: f64,
+}
+
+impl OnDemand {
+    /// The caller asked for `position`; a show of `duration` (`None` = live)
+    /// starts there, or from the top at or near its end.
+    fn resolve(position: f64, duration: Option<f64>) -> Option<Self> {
+        let duration = duration.filter(|duration| duration.is_finite() && *duration > 0.0)?;
+        let position = if position >= duration - RESUME_TAIL_S {
+            0.0
+        } else {
+            position
+        };
+        Some(Self { position, duration })
+    }
+
+    /// The lines the return leg's start control carries.
+    fn lines(&self) -> StartLines {
+        vec![
+            ("position", wire_seconds(self.position)),
+            ("duration", wire_seconds(self.duration)),
+        ]
+    }
+}
+
+/// Seconds on the wire: a decimal with one fractional digit.
+fn wire_seconds(seconds: f64) -> String {
+    format!("{seconds:.1}")
 }
 
 impl VoiceBackendFactory for StreamFactory {
@@ -117,6 +172,16 @@ fn show_from(params: &Value) -> Option<String> {
     caller_line(params, "show=")
 }
 
+/// The caller's resume point for their pick: `position=<seconds>`, a
+/// non-negative decimal next to `show=`. Missing or invalid is the top.
+fn position_from(params: &Value) -> f64 {
+    caller_line(params, "position=")
+        .filter(|value| value.bytes().all(|byte| byte.is_ascii_digit() || byte == b'.'))
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|seconds| seconds.is_finite())
+        .unwrap_or(0.0)
+}
+
 /// A line the caller pushed in the live invite's per-contact context.
 fn caller_line(params: &Value, prefix: &str) -> Option<String> {
     params
@@ -157,6 +222,8 @@ fn show_play(params: &Value, show: &str) -> Result<(Play, Option<String>)> {
         start,
         loop_fallback: params.get("loop").and_then(Value::as_bool).unwrap_or(true),
         search_root: std::env::var_os("IDFON_RADIO_ROOT").map(PathBuf::from),
+        position: position_from(params),
+        resume: None,
     };
     let topic = params
         .get("topic")
@@ -176,6 +243,30 @@ pub struct StreamBackend {
 impl VoiceBackend for StreamBackend {
     fn name(&self) -> &str {
         "stream"
+    }
+
+    /// Measure the caller's pick before the answer goes out: an on-demand
+    /// source reports where it starts and how long it runs. The clock-synced
+    /// station and live sources report nothing and ignore `position=`.
+    fn prepare(&mut self) -> PrepareFuture<'_> {
+        Box::pin(async move {
+            let Play::Rotation {
+                stations,
+                start,
+                position,
+                resume,
+                ..
+            } = &mut self.play
+            else {
+                return Vec::new();
+            };
+            let duration = match &stations[*start].1 {
+                Source::Local(path) => idfon_radio::clip_seconds(path).ok(),
+                Source::Remote(url) => probe_duration(url).await,
+            };
+            *resume = OnDemand::resolve(*position, duration);
+            resume.map(|resume| resume.lines()).unwrap_or_default()
+        })
     }
 
     fn run(&mut self, mut media: VoiceMedia) -> BackendFuture<'_> {
@@ -210,6 +301,8 @@ impl VoiceBackend for StreamBackend {
                 start,
                 loop_fallback,
                 search_root,
+                resume,
+                ..
             } => Box::pin(async move {
                 // Menu shows decode to / are the station's 24 kHz the same way.
                 ensure!(
@@ -226,9 +319,19 @@ impl VoiceBackend for StreamBackend {
                         ("stations", Value::from(stations.len())),
                     ],
                 );
+                if let Some(resume) = resume {
+                    record.event(
+                        "resume",
+                        [
+                            ("position", Value::from(resume.position)),
+                            ("duration", Value::from(resume.duration)),
+                        ],
+                    );
+                }
                 let result = run_rotation(
                     stations.clone(),
                     *start,
+                    resume.map_or(0.0, |resume| resume.position),
                     *loop_fallback,
                     search_root.as_deref(),
                     &media.audio,
@@ -307,14 +410,17 @@ enum Outcome {
     Failed(String),
 }
 
-/// Play the menu from the caller's pick. A station that fails is retried; a
+/// Play the menu from the caller's pick, `head` seconds into it (0 = the top;
+/// its retries resume there too). A station that fails is retried; a
 /// station that ends (or one that cannot be recovered) hands the air to a
 /// fresh live station from the directory search, or to the next menu entry
 /// when the search is unavailable. The call ends only when a whole menu pass
 /// has failed.
+#[allow(clippy::too_many_arguments)]
 async fn run_rotation(
     mut stations: Vec<(String, Source)>,
     start: usize,
+    mut head: f64,
     loop_fallback: bool,
     search_root: Option<&Path>,
     audio: &AudioQueue,
@@ -338,7 +444,7 @@ async fn run_rotation(
             ],
         );
         let outcome = match &source {
-            Source::Remote(url) => run_stream(url, audio, stop, caller, record).await,
+            Source::Remote(url) => run_stream(url, head, audio, stop, caller, record).await,
             Source::Local(file) => match Programme::open(ProgrammeConfig {
                 schedule: None,
                 fallback: Some(file.clone()),
@@ -346,6 +452,7 @@ async fn run_rotation(
                 topic: None,
             }) {
                 Ok(mut programme) => {
+                    programme.start_fallback_at(head);
                     run_call(&mut programme, audio, stop, caller, record).await?;
                     Outcome::Ended
                 }
@@ -359,6 +466,7 @@ async fn run_rotation(
             Outcome::Ended => {
                 retries = 0;
                 dead = 0;
+                head = 0.0;
                 index = next_station(
                     &mut stations,
                     index,
@@ -378,6 +486,7 @@ async fn run_rotation(
                 } else {
                     retries = 0;
                     dead += 1;
+                    head = 0.0;
                     let (next, fresh) = next_station(
                         &mut stations,
                         index,
@@ -460,20 +569,78 @@ async fn search_station(root: &Path, skip: &str) -> Option<(String, Source)> {
     })
 }
 
+/// Definitive probe answers by URL, for the runner's lifetime: a live station
+/// stays live and a file keeps its length, so only a URL's first pick waits on
+/// ffprobe (~1-2 s for a live stream to report no length).
+fn probed() -> &'static Mutex<HashMap<String, Option<f64>>> {
+    static PROBED: OnceLock<Mutex<HashMap<String, Option<f64>>>> = OnceLock::new();
+    PROBED.get_or_init(Default::default)
+}
+
+/// A far-end source's length in seconds, from ffprobe: finite for a file or a
+/// finished HLS playlist (on-demand); `None` for a live stream (ICY/MP3
+/// radio, live HLS) or a source that does not answer in time. Only a probe
+/// that answered is remembered; a failure is asked again next time.
+async fn probe_duration(url: &str) -> Option<f64> {
+    if let Some(known) = probed().lock().ok().and_then(|known| known.get(url).copied()) {
+        return known;
+    }
+    let output = tokio::time::timeout(
+        PROBE_TIMEOUT,
+        tokio::process::Command::new("ffprobe")
+            .args(["-v", "error", "-show_entries", "format=duration"])
+            .args(["-of", "default=noprint_wrappers=1:nokey=1", url])
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let duration = probe_seconds(&String::from_utf8_lossy(&output.stdout));
+    if let Ok(mut known) = probed().lock() {
+        known.insert(url.to_owned(), duration);
+    }
+    duration
+}
+
+/// ffprobe's `format=duration`: seconds, or `N/A` for a live source.
+fn probe_seconds(text: &str) -> Option<f64> {
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
+}
+
+/// ffmpeg's arguments for a far-end source: decode to the station's 24 kHz
+/// mono s16 on stdout, from `start` seconds in (an input seek) when non-zero.
+fn ffmpeg_args(url: &str, start: f64) -> Vec<String> {
+    let mut args: Vec<String> = ["-loglevel", "error", "-nostdin"].map(String::from).to_vec();
+    if start > 0.0 {
+        args.extend(["-ss".to_owned(), start.to_string()]);
+    }
+    args.extend(["-i", url, "-f", "s16le", "-ar", "24000", "-ac", "1", "-"].map(String::from));
+    args
+}
+
 /// Pump a far-end source into the return leg until it ends or the call stops:
 /// ffmpeg decodes any stream URL (HLS, ICY/MP3, AAC) to the station's 24 kHz
-/// PCM and the frames are paced like a programme's. Audio then a clean EOF is
-/// the station finishing; no audio, a stall, or a non-zero exit is a drop.
+/// PCM, from `start` seconds in, and the frames are paced like a programme's.
+/// Audio then a clean EOF is the station finishing; no audio, a stall, or a
+/// non-zero exit is a drop.
 async fn run_stream(
     url: &str,
+    start: f64,
     audio: &AudioQueue,
     stop: &AtomicBool,
     caller: &mut mpsc::Receiver<Vec<i16>>,
     record: &mut Recorder,
 ) -> Outcome {
     let mut child = match tokio::process::Command::new("ffmpeg")
-        .args(["-loglevel", "error", "-nostdin", "-i", url])
-        .args(["-f", "s16le", "-ar", "24000", "-ac", "1", "-"])
+        .args(ffmpeg_args(url, start))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
@@ -830,6 +997,206 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[test]
+    fn the_callers_position_parses_or_means_the_top() {
+        let at = |context: &str| position_from(&serde_json::json!({ "caller_context": context }));
+        assert_eq!(at("show=News/Morning\nposition=754.2\n"), 754.2);
+        assert_eq!(at("position= 30 "), 30.0);
+        assert_eq!(at("position=.5"), 0.5);
+        // Invalid, negative, signed, exotic, or absent: the top.
+        for context in [
+            "position=abc",
+            "position=-5",
+            "position=+5",
+            "position=1e3",
+            "position=1.2.3",
+            "position=inf",
+            "position=",
+            "show=News/Morning",
+        ] {
+            assert_eq!(at(context), 0.0, "{context:?}");
+        }
+        assert_eq!(position_from(&serde_json::json!({})), 0.0);
+    }
+
+    #[test]
+    fn an_on_demand_start_resumes_or_replays_near_the_end() {
+        let start = |position, duration| OnDemand::resolve(position, duration);
+        assert_eq!(
+            start(754.2, Some(1800.0)),
+            Some(OnDemand { position: 754.2, duration: 1800.0 })
+        );
+        // At, past, or within the last 5 s of the end: from the top.
+        for position in [1800.0, 2000.0, 1795.0, 1797.5] {
+            assert_eq!(start(position, Some(1800.0)).map(|s| s.position), Some(0.0), "{position}");
+        }
+        assert_eq!(start(1794.9, Some(1800.0)).map(|s| s.position), Some(1794.9));
+        // A live source (no length) has no start to report.
+        assert_eq!(start(754.2, None), None);
+        assert_eq!(start(754.2, Some(f64::INFINITY)), None);
+        assert_eq!(start(0.0, Some(0.0)), None);
+    }
+
+    #[test]
+    fn the_return_start_reports_an_on_demand_start() {
+        let lines = OnDemand { position: 754.24, duration: 1800.0 }.lines();
+        assert_eq!(
+            lines,
+            [("position", "754.2".to_owned()), ("duration", "1800.0".to_owned())]
+        );
+        let profile = idfon_live_media::parse_audio_profile(Some("pcm"), Some(24_000)).expect("pcm");
+        let text = idfon_live_media::return_start_text("ilv1:t", profile, &lines);
+        assert!(text.starts_with("IDFON-LIVE/1\naction=start\nticket=ilv1:t\nreturn=1\n"), "{text}");
+        assert!(text.ends_with("\nposition=754.2\nduration=1800.0"), "{text}");
+    }
+
+    #[test]
+    fn probe_output_says_on_demand_or_live() {
+        assert_eq!(probe_seconds("1800.123000\n"), Some(1800.123));
+        assert_eq!(probe_seconds("N/A\n"), None);
+        assert_eq!(probe_seconds(""), None);
+        assert_eq!(probe_seconds("0.000000"), None);
+    }
+
+    #[test]
+    fn ffmpeg_seeks_only_an_on_demand_start() {
+        let url = "https://example.com/show.mp3";
+        let live = ffmpeg_args(url, 0.0);
+        assert!(!live.iter().any(|arg| arg == "-ss"), "{live:?}");
+        let resumed = ffmpeg_args(url, 754.2);
+        let ss = resumed.iter().position(|arg| arg == "-ss").expect("-ss");
+        let input = resumed.iter().position(|arg| arg == "-i").expect("-i");
+        // An input seek: `-ss` before `-i`.
+        assert!(ss < input, "{resumed:?}");
+        assert_eq!(resumed[ss + 1], "754.2");
+        assert_eq!(resumed[input + 1], url);
+        assert_eq!(resumed.last().map(String::as_str), Some("-"));
+    }
+
+    fn backend(params: Value) -> Box<dyn VoiceBackend> {
+        match StreamFactory.create(&params) {
+            Ok(backend) => backend,
+            Err(error) => panic!("backend: {error:#}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_cached_show_resumes_and_reports_its_start() {
+        let (dir, opml) = menu_dir(
+            "resume-cache",
+            r#"<opml version="2.0"><body><outline text="News">
+                <outline text="Morning" url="https://example.com/morning.mp3" cache="morning.wav" />
+            </outline></body></opml>"#,
+        );
+        // 30 s: a resume at 12.5 s is honoured.
+        std::fs::write(dir.join("morning.wav"), wav(&vec![0; 24_000 * 30], 24_000)).expect("clip");
+        let params = |position: &str| {
+            serde_json::json!({
+                "opml": opml.to_str().expect("utf8"),
+                "caller_context": format!("show=News/Morning\nposition={position}\n"),
+            })
+        };
+        let lines = backend(params("12.5")).prepare().await;
+        assert_eq!(
+            lines,
+            [("position", "12.5".to_owned()), ("duration", "30.0".to_owned())]
+        );
+        // Within the last 5 s: from the top, still reported.
+        let lines = backend(params("26")).prepare().await;
+        assert_eq!(lines[0], ("position", "0.0".to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn the_station_and_live_sources_ignore_a_position() {
+        // The clock-synced station: no per-caller position, nothing reported.
+        let path = temp("station-position", &wav(&[0; FRAME_SAMPLES], 24_000));
+        let station = serde_json::json!({
+            "file": path,
+            "caller_context": "position=12.5\n",
+        });
+        assert!(backend(station).prepare().await.is_empty());
+        let _ = std::fs::remove_file(path);
+        // A far-end source with no length to report plays as live: here one
+        // that cannot answer the probe at all.
+        let (dir, opml) = menu_dir(
+            "resume-live",
+            r#"<opml version="2.0"><body>
+                <outline text="Live" url="http://127.0.0.1:9/live.mp3" />
+            </body></opml>"#,
+        );
+        let mut live = backend(serde_json::json!({
+            "opml": opml.to_str().expect("utf8"),
+            "caller_context": "show=Live\nposition=12.5\n",
+        }));
+        assert!(live.prepare().await.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_far_end_file_has_a_length_and_seeks() {
+        if std::process::Command::new("ffprobe").arg("-version").output().is_err() {
+            eprintln!("skip: ffmpeg not installed");
+            return;
+        }
+        // 1 s of 1s, then two frames of 2s: a 1 s resume hears only the 2s.
+        // (The tail stays under the queue target, so the pump never waits on
+        // a consumer this test does not run.)
+        let mut samples = vec![1i16; 24_000];
+        samples.extend(vec![2i16; FRAME_SAMPLES * 2]);
+        let path = temp("far-end-resume", &wav(&samples, 24_000));
+        let url = format!("file://{}", path.display());
+        assert_eq!(probe_duration(&url).await, Some(1.04));
+        let audio = AudioQueue::new();
+        let stop = Arc::new(AtomicBool::new(false));
+        let (_caller_tx, mut caller) = mpsc::channel(4);
+        let mut record = Recorder::new(None, None);
+        let outcome = run_stream(&url, 1.0, &audio, &stop, &mut caller, &mut record).await;
+        assert!(matches!(outcome, Outcome::Ended));
+        assert_eq!(audio.queued_samples(), FRAME_SAMPLES * 2, "only the tail past the seek");
+        let mut frame = vec![0i16; FRAME_SAMPLES];
+        audio.fill(&mut frame);
+        assert!(frame.iter().all(|sample| *sample == 2), "the first frame is past the seek");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn a_cached_pick_starts_at_its_head_and_the_next_at_the_top() {
+        // The pick: 1 s of 1s, then two frames of 2s. The next station: 1 s
+        // of 3s, then 1 s of 4s. Neither loops.
+        let mut pick = vec![1i16; 24_000];
+        pick.extend(vec![2i16; FRAME_SAMPLES * 2]);
+        let mut next = vec![3i16; 24_000];
+        next.extend(vec![4i16; 24_000]);
+        let first = temp("head-first", &wav(&pick, 24_000));
+        let second = temp("head-second", &wav(&next, 24_000));
+        let stations = vec![
+            ("First".to_owned(), Source::Local(first.clone())),
+            ("Second".to_owned(), Source::Local(second.clone())),
+        ];
+        let audio = AudioQueue::new();
+        let stop = Arc::new(AtomicBool::new(false));
+        let (_caller_tx, mut caller) = mpsc::channel(4);
+        let stopper = Arc::clone(&stop);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            stopper.store(true, Ordering::Relaxed);
+        });
+        let mut record = Recorder::new(None, None);
+        run_rotation(stations, 0, 1.0, false, None, &audio, &stop, &mut caller, &mut record)
+            .await
+            .expect("rotation");
+        let mut frame = vec![0i16; FRAME_SAMPLES];
+        audio.fill(&mut frame);
+        assert!(frame.iter().all(|sample| *sample == 2), "the pick started one second in");
+        audio.fill(&mut frame);
+        audio.fill(&mut frame);
+        assert!(frame.iter().all(|sample| *sample == 3), "the next station started at the top");
+        for path in [first, second] {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     #[tokio::test]
     async fn pumps_a_far_end_source_into_the_queue() {
         if std::process::Command::new("ffmpeg").arg("-version").output().is_err() {
@@ -843,7 +1210,7 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let (_caller_tx, mut caller) = mpsc::channel(4);
         let mut record = Recorder::new(None, None);
-        let outcome = run_stream(&url, &audio, &stop, &mut caller, &mut record).await;
+        let outcome = run_stream(&url, 0.0, &audio, &stop, &mut caller, &mut record).await;
         // Both frames arrived and the source ending is a clean hand-over.
         assert!(matches!(outcome, Outcome::Ended));
         assert_eq!(audio.queued_samples(), FRAME_SAMPLES * 2);
@@ -903,7 +1270,7 @@ mod tests {
         let log = std::env::temp_dir()
             .join(format!("idfon-stream-{}-rotation.jsonl", std::process::id()));
         let mut record = Recorder::new(Some(log.clone()), None);
-        run_rotation(stations, 0, false, None, &audio, &stop, &mut caller, &mut record)
+        run_rotation(stations, 0, 0.0, false, None, &audio, &stop, &mut caller, &mut record)
             .await
             .expect("rotation");
         let text = std::fs::read_to_string(&log).expect("log");
