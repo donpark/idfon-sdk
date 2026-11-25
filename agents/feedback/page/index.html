@@ -13,11 +13,12 @@
   h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 4px; }
   p.lead { margin: 0 0 20px; color: var(--ui-muted-foreground); }
   form { display: grid; gap: 20px; }
+  form[hidden] { display: none; }
   ui-segmented-control { width: 100%; border-radius: 10px; }
   ui-segmented-control-item { flex: 1; min-height: 36px; }
   ui-segmented-control-item, ui-segmented-control-indicator { border-radius: 8px; }
-  ui-rating { --ui-rating-color: #f5b400; }
-  ui-rating svg { width: 32px; height: 32px; }
+  ui-rating-item[data-slot="rating-item"] { --ui-rating-color: #f5b400; width: 2rem; height: 2rem; }
+  ui-rating-item[data-slot="rating-item"][data-highlighted] { --ui-rating-color: #f5b40099; }
   textarea { min-height: 7.5rem; font: inherit; border-radius: 10px; }
   #send button {
     width: 100%; min-height: 48px; font: inherit; font-weight: 600; border: 0; border-radius: 12px;
