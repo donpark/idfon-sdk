@@ -12,7 +12,9 @@ set -eu
 # add held as a contact request), send --text (+ --idempotency-key), send --file,
 # recv (+ --out/--from), put (+ --resource-id/--json), get, events (+ --type),
 # wait, operation (get/wait/cancel), --json envelopes, and documented failure
-# paths (missing peers, bogus tickets/operations, recv timeout).
+# paths (missing peers, bogus tickets/operations, recv timeout). Also: skill,
+# inbox --new, ask (allow / deny / no answer), error hints, and the restart of
+# a stale autostarted daemon.
 #
 # PASS requires every check to pass; exits non-zero on the first failure.
 
@@ -84,6 +86,8 @@ ok "status (human)" sh -c "\"$NUF\" --socket '$A' status | grep -q ready"
 S=$(Q "$A" status --json)
 echo "$S" | jq -e '.ok == true and .result.ready == true and .result.identity.name' >/dev/null
 echo "PASS: status --json envelope"
+
+ok "skill prints the guide" sh -c "\"$NUF\" skill | grep -q 'When things fail'"
 
 # --- identity: one you (docs/identity.md in idfon-core) -----------------------
 ORIG_ID=$(echo "$S" | jq -r '.result.identity.name')
@@ -195,6 +199,19 @@ fails "operation cancel missing" Q "$A" operation cancel op_nope --json
 ok "send --text --idempotency-key" Q "$A" send bob --text dedupe --idempotency-key cli-test-k1 --json
 ok "send --text --idempotency-key (resend)" Q "$A" send bob --text dedupe --idempotency-key cli-test-k1 --json
 fails "send without PEER" Q "$A" send --text hi --json
+ok "send to an unknown contact names the next step" sh -c "\"$NUF\" --socket '$A' send nobody hi 2>&1 | grep -q 'idfon peer list'"
+
+# --- inbox --new: only what you haven't seen (the mark lives in IDFON_HOME) --
+H() { IDFON_HOME="$work/home" "$NUF" --socket "$1" "${@:2}"; }
+H "$B" inbox --new >"$work/new1.txt" 2>/dev/null
+grep -q 'hello from cli test' "$work/new1.txt"
+echo "PASS: inbox --new shows unseen messages"
+[ -z "$(H "$B" inbox --new 2>/dev/null)" ]
+echo "PASS: inbox --new again shows nothing"
+OPID=$(Q "$A" send bob --text "fresh one" --json | jq -r .result.operation_id)
+Q "$A" operation wait "$OPID" --json | jq -e '.result.operation.status == "delivered"' >/dev/null
+[ "$(H "$B" inbox --new 2>/dev/null)" = "alice: fresh one" ]
+echo "PASS: inbox --new shows only the message since"
 
 # --- card send --wait: bob answers like the phone does ------------------------
 Q "$A" card send bob "Lunch?" --id cli-card-1 --action yes=Yes --field note=Note --wait --timeout 30s --json > "$work/card.json" &
@@ -206,6 +223,51 @@ ok "card answer" Q "$B" send alice --text "$(printf 'IDFON-UI-ACTION/1\ncard=cli
 wait "$card_pid"
 jq -e '.card == "cli-card-1" and .action == "yes" and .values.note == "noon"' "$work/card.json" >/dev/null
 echo "PASS: card send --wait reads the answer and its values"
+
+# --- ask: an Allow/Deny card; exit 0 only on allow --------------------------
+newest_card() { # socket: id of the newest card in its inbox
+  Q "$1" inbox --json | jq -r 'select(.data.text | startswith("IDFON-UI/1")) | .data.text' \
+    | sed -n 's/^payload=//p' | tail -1 | base64 --decode | jq -r .id
+}
+await_ask() { # previous card id: waits for a newer ask card on B, prints its id
+  for _ in $(seq 1 100); do
+    id=$(newest_card "$B")
+    case "$id" in ask-*) [ "$id" != "$1" ] && { echo "$id"; return 0; } ;; esac
+    sleep 0.1
+  done
+  echo "FAIL: no ask card reached bob" >&2
+  exit 1
+}
+answer_card() { # card id, action
+  Q "$B" send alice --text "$(printf 'IDFON-UI-ACTION/1\ncard=%s\naction=%s' "$1" "$2")" --json >/dev/null
+}
+Q "$A" ask "Delete old.log?" --to bob --detail "rm old.log" --timeout 30s >"$work/ask1.out" 2>/dev/null &
+ask_pid=$!
+CARD=$(await_ask "")
+answer_card "$CARD" allow
+wait "$ask_pid"
+grep -q 'allowed by bob' "$work/ask1.out"
+echo "PASS: ask exits 0 when allowed"
+Q "$A" ask "Push to main?" --to bob --timeout 30s >"$work/ask2.out" 2>&1 &
+ask_pid=$!
+CARD=$(await_ask "$CARD")
+answer_card "$CARD" deny
+if wait "$ask_pid"; then echo "FAIL: ask exited 0 when denied" >&2; exit 1; fi
+grep -q 'denied by bob' "$work/ask2.out"
+echo "PASS: ask fails when denied"
+fails "ask with no answer is no" Q "$A" ask "Anyone there?" --to bob --timeout 2s
+expired=false
+for _ in $(seq 1 50); do
+  if Q "$B" inbox --json | jq -r 'select(.data.text | startswith("IDFON-UI/1")) | .data.text' \
+    | sed -n 's/^payload=//p' | tail -1 | base64 --decode \
+    | jq -e '(.id | startswith("ask-")) and .actions == null and (.subtitle | startswith("Expired"))' >/dev/null 2>&1; then
+    expired=true; break
+  fi
+  sleep 0.1
+done
+[ "$expired" = true ] || { echo "FAIL: unanswered ask not marked expired" >&2; exit 1; }
+echo "PASS: an unanswered ask is marked expired on their side"
+ok "ask with no one to ask says how to set one" sh -c "IDFON_HOME='$work/home' \"$NUF\" --socket '$A' ask hi 2>&1 | grep -q 'ask.peer'"
 
 # --- put/get variations (chunked round trip lives in test-e2e.sh) ------------
 printf 'cli-test-payload' > "$work/payload.bin"
@@ -255,6 +317,7 @@ start_daemon d
 C_PID=$(Q "$C" status --json | jq -r .result.identity.public_key)
 D_PID=$(Q "$D" status --json | jq -r .result.identity.public_key)
 ok "peer add (one way)" Q "$C" peer add "$B_PID" --name bob --endpoint-id "$B_EP" --endpoint-addr "$B_ADDR" --json
+ok "send without a grant names the next step" sh -c "\"$NUF\" --socket '$C' send bob 'too soon' 2>&1 | grep -q 'access grant'"
 ok "access allow (C->B send)" Q "$C" access allow "$B_PID" message.send --json
 Q "$B" request list --json | jq -e '.result.requests | length == 0' >/dev/null
 echo "PASS: request list empty"
@@ -316,6 +379,28 @@ ok "request unblock" sh -c "\"$NUF\" --socket '$B' request unblock '$D_PID' | gr
 ok "peer remove" Q "$A" peer remove bob --json
 Q "$A" peer list --json | jq -e '.result.peers | length == 0' >/dev/null
 echo "PASS: peer remove leaves list empty"
+
+# --- a stale autostarted daemon restarts, unless busy -----------------------
+# The CLI autostarts idfond for a socket nobody serves; once the daemon code
+# on disk changes (touching the dylib stands in for a rebuild), the next
+# command restarts it, but not while another client is connected.
+E="$work/e/idfond.sock"
+mkdir -p "$work/e"
+Q "$E" status --json | jq -e '.result.autostarted == true and .result.host == "idfond" and .result.build.stale == false and (.result.build.image | endswith("libiroh_c_ffi.dylib"))' >/dev/null
+echo "PASS: an autostarted daemon reports its build"
+Q "$E" wait --timeout-ms 4000 --json >/dev/null &
+waiter=$!
+sleep 0.5
+touch "$core_target/release/libiroh_c_ffi.dylib"
+Q "$E" status 2>"$work/e.busy" >/dev/null
+grep -q busy "$work/e.busy" && ! grep -q restarted "$work/e.busy"
+echo "PASS: a busy stale daemon keeps running"
+wait "$waiter"
+Q "$E" status 2>"$work/e.idle" >/dev/null
+grep -q 'restarted the daemon' "$work/e.idle"
+Q "$E" status --json | jq -e '.result.build.stale == false and .result.autostarted == true' >/dev/null
+echo "PASS: an idle stale daemon restarts on the next command"
+ok "shutdown (autostarted)" Q "$E" shutdown
 
 # --- shutdown (last: A goes away here; do not touch A afterwards) ------------
 ok "shutdown" Q "$A" shutdown

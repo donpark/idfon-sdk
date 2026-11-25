@@ -1,22 +1,21 @@
 #!/bin/sh
 set -eu
 
-# M4 acceptance: idfon as an MCP server.
-#
-# `idfon-mcp-server` is a separate adapter over idfon-client that speaks MCP
-# over stdio and exposes idfon capabilities as tools. Consent stays with the
-# daemon: sending to an ungranted peer comes back as a tool error, sending to a
-# granted peer delivers.
+# idfon as an MCP server: `idfon mcp server` speaks MCP over stdio and serves
+# every CLI command as a tool. Consent stays with the daemon: sending to an
+# ungranted peer comes back as a tool error (with the CLI's hint), sending to
+# a granted peer delivers.
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$root/scripts/lib/core.sh"
 cd "$root"
 
   core_cargo build --release -p iroh-c-ffi
-core_cargo build --release -p idfond && cargo build --release -p idfon-cli -p idfon-mcp-server
+core_cargo build --release -p idfond && cargo build --release -p idfon-cli
 codesign --force -s - "$core_target"/release/libiroh_c_ffi.dylib "$core_target"/release/idfond
 
 work=$(mktemp -d /tmp/idfon-mcp-server.XXXXXX)
+printf 'hello blob\n' >"$work/blob.txt"
 pids=""
 cleanup() {
   if [ -n "$pids" ]; then
@@ -65,8 +64,8 @@ Q "$A" peer add "$CAROL" --name carol --endpoint-id "$CAROL" --endpoint-addr "{\
 Q "$A" access allow --subject "$B_PID" --capability message.send --json >/dev/null
 Q "$B" access allow --subject "$A_PID" --capability message.receive --json >/dev/null
 
-if ! python3 "$root/scripts/mcp-fixture.py" drive-server "$core_target/release/idfon-mcp-server" "$A"; then
-  echo "FAIL: MCP client calls against the adapter" >&2
+if ! python3 "$root/scripts/mcp-fixture.py" drive-server "$NUF" "$A" "$work/blob.txt"; then
+  echo "FAIL: MCP client calls against idfon mcp server" >&2
   echo "--- A log ---" >&2; tail -20 "$work/a.log" >&2
   echo "--- B log ---" >&2; tail -20 "$work/b.log" >&2
   exit 1
@@ -74,7 +73,7 @@ fi
 
 for _ in $(seq 1 100); do
   if Q "$B" events --json | jq -e '[.result.events[].data.text] | index("hi from mcp")' >/dev/null; then
-    echo "PASS: idfon-mcp-server tools (discover, list_peers, put_blob, grant-gated send)"
+    echo "PASS: idfon mcp server (discover, tools from the CLI, put, grant-gated send, initialize)"
     exit 0
   fi
   sleep 0.1

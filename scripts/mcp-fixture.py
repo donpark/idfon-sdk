@@ -320,34 +320,26 @@ def run_drive(connect_args):
             proc.wait()
 
 
-def run_server_drive(binary, socket):
-    """Drive `idfon-mcp-server` (the M4 adapter) as an MCP client."""
-    proc = subprocess.Popen(
-        [binary, "--socket", socket],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        bufsize=0,
-    )
+def run_server_drive(binary, socket, blob_file):
+    """Drive `idfon mcp server` (every CLI command a tool) as an MCP client."""
+    command = [binary, "--socket", socket, "mcp", "server"]
+    proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
     reader = LineReader(proc.stdout.fileno())
 
-    def request(obj):
+    def request(obj, meta=True):
         params = obj.setdefault("params", {})
-        params.setdefault("_meta", client_meta())
+        if meta:
+            params.setdefault("_meta", client_meta())
         proc.stdin.write((json.dumps(obj, separators=(",", ":")) + "\n").encode())
         proc.stdin.flush()
-        line = reader.readline(timeout=15)
+        line = reader.readline(timeout=30)
         if line is None:
-            raise AssertionError(f"adapter closed before {obj.get('method')}")
+            raise AssertionError(f"server closed before {obj.get('method')}")
         return json.loads(line)
 
     def call(name, arguments):
         response = request(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
-            }
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
         )
         assert "error" not in response, response
         result = response["result"]
@@ -357,17 +349,19 @@ def run_server_drive(binary, socket):
         discover = request({"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": {}})
         assert PROTOCOL in discover["result"]["supportedVersions"], discover
         assert "tools" in discover["result"]["capabilities"], discover
-        assert discover["result"]["_meta"][META_SERVER_INFO]["name"] == "idfon-mcp-server", discover
+        assert discover["result"]["_meta"][META_SERVER_INFO]["name"] == "idfon", discover
+        assert "When things fail" in discover["result"]["instructions"], "the skill is the instructions"
 
         listing = request({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
-        names = [tool["name"] for tool in listing["result"]["tools"]]
-        assert "idfon.put_blob" in names and "idfon.send_message" in names, names
-        assert listing["result"]["_meta"][META_SERVER_INFO]["name"] == "idfon-mcp-server", listing
+        tools = {tool["name"]: tool for tool in listing["result"]["tools"]}
+        for name in ("send", "inbox", "peer_list", "put", "card_send", "ask", "request_accept"):
+            assert name in tools, (name, sorted(tools))
+        for name in ("shutdown", "mcp_server"):
+            assert name not in tools, name
+        assert "follow" not in tools["inbox"]["inputSchema"]["properties"], tools["inbox"]
 
         # Conformance: missing required `_meta` -> -32602; wrong version -> -32022.
-        malformed = request(
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {"_meta": {}}}
-        )
+        malformed = request({"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {"_meta": {}}})
         assert malformed["error"]["code"] == INVALID_PARAMS, malformed
         mismatched = request(
             {
@@ -380,20 +374,49 @@ def run_server_drive(binary, socket):
         assert mismatched["error"]["code"] == UNSUPPORTED_VERSION, mismatched
         assert PROTOCOL in mismatched["error"]["data"]["supported"], mismatched
 
-        is_error, text = call("idfon.list_peers", {})
+        is_error, text = call("peer_list", {})
         assert not is_error and "bob" in text, text
 
-        is_error, text = call("idfon.put_blob", {"text": "hello blob"})
-        assert not is_error, text
-        assert json.loads(text).get("blob_ticket"), text
+        is_error, text = call("put", {"file": blob_file})
+        assert not is_error and text.startswith("blob"), text
 
-        # Consent is the daemon's: bob is granted, carol is not.
-        is_error, text = call("idfon.send_message", {"to": "carol", "text": "nope"})
-        assert is_error and "capability" in text.lower(), text
+        is_error, text = call("send", {"peer": "bob", "bogus": True})
+        assert is_error and "unknown argument" in text, text
 
-        is_error, text = call("idfon.send_message", {"to": "bob", "text": "hi from mcp"})
-        assert not is_error, text
-        assert json.loads(text).get("operation_id"), text
+        # Consent is the daemon's: bob is granted, carol is not; the denial
+        # carries the CLI's hint.
+        is_error, text = call("send", {"peer": "carol", "message": "nope"})
+        assert is_error and "capability" in text.lower() and "hint:" in text, text
+
+        is_error, text = call("send", {"peer": "bob", "message": "hi from mcp"})
+        assert not is_error and "sent to bob" in text, text
+    finally:
+        if proc.stdin:
+            proc.stdin.close()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    # Clients on the older `initialize` handshake: no `_meta` needed after it.
+    proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+    reader = LineReader(proc.stdout.fileno())
+    try:
+        init = request(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}},
+            },
+            meta=False,
+        )
+        assert init["result"]["protocolVersion"] == "2025-06-18", init
+        assert init["result"]["serverInfo"]["name"] == "idfon", init
+        proc.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
+        listing = request({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}, meta=False)
+        assert any(tool["name"] == "send" for tool in listing["result"]["tools"]), listing
     finally:
         if proc.stdin:
             proc.stdin.close()
@@ -411,11 +434,11 @@ def main():
         run_drive([sys.argv[2], "connect", "--peer", sys.argv[3], "--key-file", sys.argv[4]])
     elif len(sys.argv) == 4 and sys.argv[1] == "drive-uds":
         run_drive([sys.argv[2], "connect", "--uds", sys.argv[3]])
-    elif len(sys.argv) == 4 and sys.argv[1] == "drive-server":
-        run_server_drive(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 5 and sys.argv[1] == "drive-server":
+        run_server_drive(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         print(
-            "usage: mcp-fixture.py server | drive BIN PEER KEY | drive-uds BIN SOCKET | drive-server BIN DAEMON_SOCKET",
+            "usage: mcp-fixture.py server | drive BIN PEER KEY | drive-uds BIN SOCKET | drive-server IDFON DAEMON_SOCKET FILE",
             file=sys.stderr,
         )
         sys.exit(2)

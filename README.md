@@ -150,9 +150,16 @@ idfon-mcp connect --peer '<peer-ticket>'
 
 `idfon-mcp --help` shows the exact bridge options. The daemon also has
 `idfon mcp listen` and `idfon mcp configure` commands for daemon-backed
-connections. `idfon-mcp-server` exposes selected idfon operations as MCP
-tools. This area is experimental. See
+connections. This area is experimental. See
 [MCP transport](docs/mcp-transport.md).
+
+To give an agent idfon itself as tools, run `idfon mcp server` (stdio): every
+CLI command is a tool (`peer add` is `peer_add`), and the skill
+(`idfon skill`) is the server's instructions:
+
+```json
+{ "mcpServers": { "idfon": { "command": "idfon", "args": ["mcp", "server"] } } }
+```
 
 ## Eve extension and agents
 

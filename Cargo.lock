@@ -2456,18 +2456,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "idfon-mcp-server"
-version = "0.14.0"
-dependencies = [
- "anyhow",
- "clap",
- "idfon-client",
- "idfon-protocol",
- "idfon-telemetry",
- "serde_json",
-]
-
-[[package]]
 name = "idfon-media"
 version = "0.14.0"
 dependencies = [

@@ -414,7 +414,7 @@ Two orthogonal edges, both standard:
 
 - **Conversation** → idfon channel (this document).
 - **Tools** → MCP: Eve consumes idfon capabilities via
-  `defineMcpClientConnection` (Streamable HTTP facade over `idfon-mcp-server`),
+  `defineMcpClientConnection` (Streamable HTTP facade over `idfon mcp server`),
   and idfon reaches the Eve agent's MCP channel over `idfon/mcp/1`.
 
 Do not collapse them: an idfon channel is an ingress for turns, not a tool

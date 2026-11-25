@@ -10,13 +10,12 @@ h3, director), which live in the sibling idfon-core repo.
 
 | Crate | What it is |
 | --- | --- |
-| `idfon-cli` | The `idfon` CLI: noun-verb subcommands mapped one-to-one onto daemon methods. |
+| `idfon-cli` | The `idfon` CLI: noun-verb subcommands mapped one-to-one onto daemon methods. `idfon mcp server` serves every command as an MCP tool (stdio); consent decisions stay in the daemon. |
 
 ## MCP
 
 | Crate | What it is |
 | --- | --- |
-| `idfon-mcp-server` | MCP *server* adapter (stdio), a separate process over `idfon-client`; consent decisions stay in the daemon. |
 
 ## Media
 
