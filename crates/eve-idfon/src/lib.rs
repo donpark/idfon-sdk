@@ -1454,6 +1454,22 @@ async fn handle_message(
     let wire_text = match &message.content {
         MessageContent::Text { text } => text.clone(),
     };
+    // Presence, typing, receipts and the like are about the person, not a
+    // turn: acknowledge and drop them before rate limits or the agent see
+    // them (an agent answered every 100 s presence ping with a reply).
+    if let Some(kind) = ambient_envelope(&wire_text) {
+        tracing::debug!(
+            target: "idfon.holder",
+            message_id = %message.message_id,
+            peer_id = %message.sender.peer_id,
+            kind,
+            "ambient envelope dropped"
+        );
+        return Ok(MessageAck {
+            message_id: message.message_id,
+            status: AckStatus::Accepted,
+        });
+    }
     let (text, a2a_depth) = parse_a2a_envelope(&wire_text)
         .map(|envelope| (envelope.text, Some(envelope.depth)))
         .unwrap_or((wire_text.clone(), None));
@@ -2034,6 +2050,25 @@ fn encode_a2a_envelope(
     }
     envelope.push_str(&format!("payload={}\n", BASE64.encode(text.as_bytes())));
     envelope
+}
+
+/// The chat envelopes that are about the sender, never a turn for the agent
+/// (idfon-core docs/chat-envelopes.md): presence, typing, read receipts,
+/// reactions, edits, profile photos, doorbell keys and "free to talk?"
+/// knocks. Returns the envelope name.
+fn ambient_envelope(text: &str) -> Option<&'static str> {
+    const AMBIENT: [&str; 8] = [
+        "IDFON-PRESENCE/1",
+        "IDFON-TYPING/1",
+        "IDFON-READ/1",
+        "IDFON-REACT/1",
+        "IDFON-EDIT/1",
+        "IDFON-PROFILE/1",
+        "IDFON-DOORBELL/1",
+        "IDFON-KNOCK/1",
+    ];
+    let first = text.lines().next()?.trim_end();
+    AMBIENT.into_iter().find(|name| *name == first)
 }
 
 #[derive(Debug, PartialEq)]
@@ -3207,6 +3242,27 @@ mod tests {
             merge_allow(&["daemon".to_string()], &load_allow_file(&path)),
             vec!["daemon", "peer-a", "peer-b"]
         );
+    }
+
+    #[test]
+    fn ambient_envelopes_are_not_turns() {
+        assert_eq!(
+            ambient_envelope("IDFON-PRESENCE/1\nstate=online\n"),
+            Some("IDFON-PRESENCE/1")
+        );
+        assert_eq!(
+            ambient_envelope("IDFON-TYPING/1\r\nstate=on"),
+            Some("IDFON-TYPING/1")
+        );
+        assert_eq!(
+            ambient_envelope("IDFON-DOORBELL/1\nkey=abc"),
+            Some("IDFON-DOORBELL/1")
+        );
+        assert_eq!(ambient_envelope("hello"), None);
+        assert_eq!(ambient_envelope("IDFON-LIVE/1\naction=start"), None);
+        assert_eq!(ambient_envelope("IDFON-UI-ACTION/1\nid=x"), None);
+        assert_eq!(ambient_envelope("IDFON-PRESENCE/10\nstate=online"), None);
+        assert_eq!(ambient_envelope(""), None);
     }
 
     #[test]
