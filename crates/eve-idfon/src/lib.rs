@@ -2054,10 +2054,12 @@ fn encode_a2a_envelope(
 
 /// The chat envelopes that are about the sender, never a turn for the agent
 /// (idfon-core docs/chat-envelopes.md): presence, typing, read receipts,
-/// reactions, edits, profile photos, doorbell keys and "free to talk?"
-/// knocks. Returns the envelope name.
+/// reactions, edits, profile photos, doorbell keys, "free to talk?" knocks,
+/// introduction notices and card-sharing preferences (idfon-home
+/// docs/introductions.md: agents drop them, so two agents cannot loop on
+/// them). Returns the envelope name.
 fn ambient_envelope(text: &str) -> Option<&'static str> {
-    const AMBIENT: [&str; 8] = [
+    const AMBIENT: [&str; 10] = [
         "IDFON-PRESENCE/1",
         "IDFON-TYPING/1",
         "IDFON-READ/1",
@@ -2066,6 +2068,8 @@ fn ambient_envelope(text: &str) -> Option<&'static str> {
         "IDFON-PROFILE/1",
         "IDFON-DOORBELL/1",
         "IDFON-KNOCK/1",
+        "IDFON-INTRO/1",
+        "IDFON-SHARE/1",
     ];
     let first = text.lines().next()?.trim_end();
     AMBIENT.into_iter().find(|name| *name == first)
@@ -3258,6 +3262,11 @@ mod tests {
             ambient_envelope("IDFON-DOORBELL/1\nkey=abc"),
             Some("IDFON-DOORBELL/1")
         );
+        assert_eq!(
+            ambient_envelope("IDFON-INTRO/1\nto=abc\nname=Bob"),
+            Some("IDFON-INTRO/1")
+        );
+        assert_eq!(ambient_envelope("IDFON-SHARE/1\nshare=ask"), Some("IDFON-SHARE/1"));
         assert_eq!(ambient_envelope("hello"), None);
         assert_eq!(ambient_envelope("IDFON-LIVE/1\naction=start"), None);
         assert_eq!(ambient_envelope("IDFON-UI-ACTION/1\nid=x"), None);
