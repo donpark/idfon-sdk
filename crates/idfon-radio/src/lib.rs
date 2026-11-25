@@ -11,6 +11,7 @@
 
 mod clip;
 pub mod menu;
+pub use clip::clip_seconds;
 pub mod programming;
 
 use std::{
@@ -125,6 +126,8 @@ pub struct Programme {
     clips: HashMap<PathBuf, Arc<Vec<i16>>>,
     current: Option<Selection>,
     cursor: usize,
+    /// Where the fallback starts the first time it is selected (samples).
+    fallback_start: usize,
 }
 
 struct Selection {
@@ -162,11 +165,22 @@ impl Programme {
             clips: HashMap::new(),
             current: None,
             cursor: 0,
+            fallback_start: 0,
         })
     }
 
     pub fn rate(&self) -> u32 {
         OUTPUT_RATE
+    }
+
+    /// Start the fallback `seconds` in (frame-aligned) the first time it
+    /// plays: an on-demand show resuming where its listener left off. Slots
+    /// keep their clock. Past the end it starts from the top.
+    pub fn start_fallback_at(&mut self, seconds: f64) {
+        let frames = (seconds.max(0.0) * f64::from(OUTPUT_RATE)) as usize / FRAME_SAMPLES;
+        let start = frames * FRAME_SAMPLES;
+        let len = self.fallback.as_ref().map_or(0, |clip| clip.len());
+        self.fallback_start = if start < len { start } else { 0 };
     }
 
     pub fn has_programme(&self) -> bool {
@@ -212,8 +226,10 @@ impl Programme {
                 ));
             }
         }
+        let mut start = 0;
         if next.is_none() {
             if let (Some(path), Some(clip)) = (&self.fallback_path, &self.fallback) {
+                start = self.fallback_start;
                 next = Some((
                     format!("fallback:{}", path.display()),
                     Selection {
@@ -235,6 +251,9 @@ impl Programme {
             self.cursor = 0;
             match next {
                 Some((_, selection, info)) => {
+                    // A resume applies once; a later return replays the top.
+                    self.cursor = start;
+                    self.fallback_start = 0;
                     log(Event::Slot(info));
                     self.current = Some(selection);
                 }
@@ -370,6 +389,7 @@ mod tests {
             clips: HashMap::new(),
             current: None,
             cursor: 0,
+            fallback_start: 0,
         };
         let mut events = Vec::new();
         programme.sync(Local::now().naive_local(), |event| events.push(event));
@@ -398,6 +418,29 @@ mod tests {
         let mut frame = vec![0i16; FRAME_SAMPLES];
         assert!(programme.frame(&mut frame));
         assert!(!programme.frame(&mut frame), "one frame, then done");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn the_fallback_resumes_once_where_asked() {
+        let mut samples = vec![1i16; OUTPUT_RATE as usize];
+        samples.extend(vec![2i16; OUTPUT_RATE as usize]);
+        let path = temp("resume", &wav(&samples));
+        let mut programme = Programme::open(ProgrammeConfig {
+            schedule: None,
+            fallback: Some(path.clone()),
+            loop_fallback: true,
+            topic: None,
+        })
+        .expect("programme");
+        programme.start_fallback_at(1.0);
+        programme.sync(Local::now().naive_local(), |_| {});
+        let mut frame = vec![0i16; FRAME_SAMPLES];
+        assert!(programme.frame(&mut frame));
+        assert_eq!(frame[0], 2, "one second in");
+        // Past the end is the top.
+        programme.start_fallback_at(9.0);
+        assert_eq!(programme.fallback_start, 0);
         let _ = std::fs::remove_file(path);
     }
 

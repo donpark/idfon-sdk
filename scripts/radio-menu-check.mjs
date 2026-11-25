@@ -60,7 +60,7 @@ check(items[0].value === "BBC" && items[0].payload === "World/BBC", `label vs pa
 // A title carrying the path separator gets its index segment (the app's rule).
 check(items[1].payload === "World/2", `separator in title → index segment: ${items[1].payload}`);
 check(items[2].payload === "Talk", `top-level show path: ${items[2].payload}`);
-check(elements["menu-list"].props.action === "idfon.call", "menu items dispatch idfon.call");
+check(elements["menu-list"].props.action === "idfon.play", "menu items dispatch idfon.play");
 check(elements["menu-input"].props.action === "idfon.message.send" && elements["menu-input"].props.arg === "text", "input sends typed text");
 
 const filtered = await tool.execute({ filter: "bbc" }, { session: { id: "check2" } });

@@ -42,6 +42,12 @@ running the client cascade. A per-call `direction=` line in `IDFON-LIVE/1`
 would be the right place only when the same contact can also listen (a
 radio agent you can interrupt); it does not exist yet.
 
+**Channels are played, not called (2026-11-24).** The apps never present a
+broadcast contact as a phone call: opening its chat plays it (a live stream
+joins what is on now, an on-demand show resumes where the listener left off).
+The one-way live call is the transport underneath. A call stays for people and
+for agents that want one.
+
 The topic rides the existing per-contact context (`context_b64`, already
 "caller-pushed per-turn context"): the backend reads a `topic=<value>` line and
 it wins over the config's `topic` default. That is one agent, many topic
@@ -70,6 +76,43 @@ a whole agent unit — see **The radio-world agent** below.
   (segments are case-insensitive and mixable). It beats the station default:
   the call starts with the chosen show; when it ends or drops, the rotation
   continues with a fresh station (below).
+- **Resume (caller → holder).** Next to `show=`, the caller may send
+  `position=<seconds>`, a non-negative decimal (`754.2`). An **on-demand**
+  pick starts that many seconds in: a file in the local download cache (its
+  length comes from the WAV headers, `idfon_radio::clip_seconds`), or a
+  far-end source whose length ffprobe reports as finite (a podcast file, a
+  finished HLS playlist; ffmpeg seeks with `-ss` before `-i`). A **live**
+  source ignores it: ICY/MP3 or AAC radio, live HLS, or a source ffprobe
+  cannot measure within 5 s. The clock-synced station ignores it too. A
+  position at or past the end, or within its last 5 s, starts from 0; a
+  missing or invalid one (`-5`, `abc`, `1e3`) is 0. Retries of the pick
+  resume at the same point; the stations the rotation hands over to start at
+  the top. The probe runs before the holder answers — a live stream reports
+  "no length" in ~1–2 s — and a definite answer is remembered per URL for the
+  runner's lifetime, so only a URL's first pick waits.
+- **Where it started (holder → caller).** The return leg's start control —
+  the holder's `IDFON-LIVE/1` answer with `return=1`, built by
+  `idfon_live_media::return_start_text` from the backend's
+  `VoiceBackend::prepare` lines — carries `position=<seconds it actually
+  started at>` and `duration=<seconds>` (one fractional digit) for an
+  on-demand pick, so the app can show progress and save the position. A live
+  pick carries neither. Example, caller context then answer:
+
+  ```
+  show=News/Morning Briefing
+  position=754.2
+  ```
+
+  ```
+  IDFON-LIVE/1
+  action=start
+  ticket=<ticket>
+  return=1
+  audio_codec=pcm
+  audio_sample_rate=24000
+  position=754.2
+  duration=1800.0
+  ```
 - Far-end sources play too: ffmpeg decodes the stream (HLS, ICY/MP3, AAC) to
   the station's 24 kHz at call time (`stream.rs` `run_stream`). A menu pick is
   a **rotation**: audio then a clean EOF hands the air to a fresh live station
@@ -168,10 +211,11 @@ pnpm agent clean radio-world
 - **The menu is the agent's own surface.** The `radio-menu` tool
   (`agents/radio-world/agent/tools/`) renders the catalogue as a json-render
   block — a `Menu` of Play choices plus an `Input` for typed requests
-  (`docs/reply-blocks.md`). A pick dispatches `idfon.call`, the app's dial
-  verb, and the station plays it; **Stop in the station screen (or the call
-  Bar) is the off switch**. Opening a single-station contact tunes it in
-  without a call press. The same `shows.opml` feeds the contact's detail
+  (`docs/reply-blocks.md`). A pick dispatches `idfon.play` — "play this
+  channel/show", args `peer` and `show` (a menu pick sends the item's `show=`
+  path as `value`) — and the app plays it; **Stop in the station screen is the
+  off switch**. Opening a single-station contact tunes it in without a
+  press. The same `shows.opml` feeds the contact's detail
   surface (`menu.opml`), so the two views can never disagree.
 - **Programming is a tool, not a script you run.** The `radio-program` tool
   wraps `scripts/radio-program.mjs` (`submit`/`fallback`/`brief`/`segment`/
