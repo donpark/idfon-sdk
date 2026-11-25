@@ -16,7 +16,7 @@ kept because it records decisions; **design** = not all implemented.
 
 | Doc | Covers |
 | --- | --- |
-| `cli-architecture.md` | CLI shape + npm packaging; contact vCards |
+| `cli-architecture.md` | CLI shape + npm packaging; contact vCards; the agent surface (`idfon skill`, `idfon mcp server`, `hint:` lines, `inbox --new`, stale-daemon restart, `idfon ask` + a Claude Code hook example) |
 | `cli-data.md` | `put`/`get`/`send-data`, live streaming |
 | `npm-distribution.md` | npm packages and the publish gate |
 

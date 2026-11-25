@@ -8,9 +8,9 @@ update the index.
 
 ## Layout
 
-- `crates/`: idfon-cli (the `idfon` binary), idfon-mcp-server, eve-idfon (the
-  Eve holder), idfon-voice-agent (the `eve-idfon-voice` runner),
-  idfon-live-media, idfon-radio. They depend on idfon-core crates by path
+- `crates/`: idfon-cli (the `idfon` binary; `idfon mcp server` serves its
+  commands as MCP tools), eve-idfon (the Eve holder), idfon-voice-agent (the
+  `eve-idfon-voice` runner), idfon-live-media, idfon-radio. They depend on idfon-core crates by path
   (`../idfon-core/crates/...`).
 - `cli/`: the npm packaging (`idfon` shim + per-platform packages);
   `scripts/build-cli.sh` fills them.

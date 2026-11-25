@@ -160,12 +160,15 @@ pub fn describe_text(text: &str) -> String {
 }
 
 /// `idfon inbox`: received messages as `name: text`, optionally following.
+/// `new` shows only messages since the last `inbox --new` (kept per daemon,
+/// identity and `--from` contact) and moves that mark to the newest message.
 pub fn cmd_inbox(
     socket: &str,
     identity: Option<&str>,
     from: Option<&str>,
     limit: usize,
     follow: bool,
+    new: bool,
     json: bool,
 ) -> io::Result<()> {
     let from = from
@@ -192,29 +195,98 @@ pub fn cmd_inbox(
             describe_text(data["text"].as_str().unwrap_or(""))
         );
     };
-    let events: Vec<Value> = message_events(socket, identity, None)?
-        .into_iter()
-        .filter(|event| keep(event))
-        .collect();
+    let mark = new.then(|| SeenMark::new(socket, identity, from.as_ref().map(|peer| peer.id.as_str())));
+    let after = mark.as_ref().and_then(SeenMark::load);
+    let all = match message_events(socket, identity, after.clone()) {
+        // The mark fell out of the kept history: everything kept is new.
+        Err(_) if after.is_some() => message_events(socket, identity, None)?,
+        other => other?,
+    };
+    let newest = all.last().and_then(|event| event["cursor"].as_str()).map(str::to_owned);
+    let events: Vec<Value> = all.into_iter().filter(|event| keep(event)).collect();
     let skip = events.len().saturating_sub(limit);
+    if new && skip > 0 && !json {
+        eprintln!("({skip} earlier new messages not shown; raise -n to see them)");
+    }
     for event in &events[skip..] {
         print(event);
     }
+    if let (Some(mark), Some(cursor)) = (&mark, &newest) {
+        mark.save(cursor);
+    }
     if events.is_empty() && !follow && !json {
-        eprintln!("no messages");
+        eprintln!("{}", if new { "no new messages" } else { "no messages" });
     }
     if follow {
-        let mut after = latest_cursor(socket, identity);
+        let mut after = newest.or_else(|| latest_cursor(socket, identity));
         loop {
             if let Some(event) =
                 wait_message(socket, identity, after.clone(), Duration::from_secs(30), |event: &Value| keep(event))?
             {
                 after = event["cursor"].as_str().map(str::to_owned);
                 print(&event);
+                if let (Some(mark), Some(cursor)) = (&mark, &after) {
+                    mark.save(cursor);
+                }
             }
         }
     }
     Ok(())
+}
+
+/// Where `inbox --new` keeps the cursor of the newest message it showed:
+/// `<idfon home>/cli/inbox-<hash>.cursor`, one per daemon socket, identity and
+/// `--from` contact. The file also names the daemon's identity key, so a mark
+/// from another daemon at the same socket is ignored.
+struct SeenMark {
+    path: std::path::PathBuf,
+    owner: String,
+}
+
+impl SeenMark {
+    fn new(socket: &str, identity: Option<&str>, from: Option<&str>) -> Self {
+        let owner = call_plain(socket, &rpc::DaemonStatus {}, identity)
+            .ok()
+            .and_then(|response| ok_result(response).ok())
+            .and_then(|result| result["identity"]["public_key"].as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let key = format!("{socket}\n{}\n{}", identity.unwrap_or(""), from.unwrap_or(""));
+        let hash = key
+            .bytes()
+            .fold(0xcbf2_9ce4_8422_2325u64, |acc, byte| (acc ^ byte as u64).wrapping_mul(0x100_0000_01b3));
+        let path = idfon_config::paths::home().join("cli").join(format!("inbox-{hash:016x}.cursor"));
+        Self { path, owner }
+    }
+
+    fn load(&self) -> Option<String> {
+        let text = std::fs::read_to_string(&self.path).ok()?;
+        let (owner, cursor) = text.trim().split_once('\n')?;
+        (owner == self.owner && !cursor.is_empty()).then(|| cursor.to_owned())
+    }
+
+    fn save(&self, cursor: &str) {
+        if let Some(dir) = self.path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&self.path, format!("{}\n{cursor}\n", self.owner));
+    }
+}
+
+/// `90s` → `1m30s`, `300s` → `5m`, `7200s` → `2h`: durations as people type them.
+pub fn human_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    let (hours, minutes, seconds) = (secs / 3600, secs / 60 % 60, secs % 60);
+    let mut out = String::new();
+    if hours > 0 {
+        out.push_str(&format!("{hours}h"));
+    }
+    if minutes > 0 {
+        out.push_str(&format!("{minutes}m"));
+    }
+    if seconds > 0 || out.is_empty() {
+        out.push_str(&format!("{seconds}s"));
+    }
+    out
 }
 
 /// Seconds since the epoch.
@@ -306,6 +378,15 @@ mod tests {
         assert_eq!(parse_expiry("2026-12-31T10:00:00Z").unwrap(), "2026-12-31T10:00:00Z");
         assert!(parse_expiry("30d").unwrap().ends_with('Z'));
         assert!(parse_expiry("soon").is_err());
+    }
+
+    #[test]
+    fn human_duration_reads_like_the_flags() {
+        assert_eq!(human_duration(Duration::from_secs(60)), "1m");
+        assert_eq!(human_duration(Duration::from_secs(300)), "5m");
+        assert_eq!(human_duration(Duration::from_secs(90)), "1m30s");
+        assert_eq!(human_duration(Duration::from_secs(7200)), "2h");
+        assert_eq!(human_duration(Duration::from_secs(0)), "0s");
     }
 
     #[test]

@@ -60,3 +60,61 @@ Key facts:
   `gh workflow run cli --ref cli-v<ver>` (tag pushes fire nothing — no tags
   trigger). Package names on the registry stay `idfon` / `idfon-*`; see
   [npm-distribution.md](npm-distribution.md).
+
+## For agents
+
+The CLI is judged by how easily an agent uses it from the skill alone
+(`tools/cli-eval/`). The pieces that serve agents:
+
+- **The skill ships in the binary**: `idfon skill` prints
+  `skills/idfon/SKILL.md` as built into this version (`include_str!`), so an
+  installed CLI never disagrees with its guide.
+- **`idfon mcp server`** speaks MCP over stdio (`2026-07-28`, and the older
+  `initialize` handshake). Tools are generated from the clap definitions, so
+  every command is one (`peer add` → `peer_add`, flags → arguments) and the
+  MCP surface cannot fall behind the CLI. A call runs the same binary and
+  returns its output; `mcp …`, `shutdown`, `skill` and `--follow` are left out
+  (they block or are the server itself). The skill is the server's
+  instructions. Code: `crates/idfon-cli/src/mcp_server.rs`.
+- **Errors name the next command**: daemon errors print a `hint:` line
+  (`hint_for` in `main.rs`), and timeouts say how to keep waiting
+  (`idfon card wait … --card ID`, `idfon inbox --from bob --new`).
+- **`inbox --new`** shows messages since the last `inbox --new`; the mark is a
+  cursor in `<idfon home>/cli/`, per daemon socket, identity and `--from`.
+- **A stale daemon restarts itself**: when the daemon the CLI autostarted
+  (`IDFON_AUTOSTARTED=1`) reports that its code changed on disk
+  (`daemon.status` `build.stale`, after a rebuild or an upgrade), the next
+  command shuts it down and starts a fresh one, unless another client is
+  connected or a broadcast runs. The mac app's daemon and a daemon a script
+  started are never touched.
+- **`idfon ask`** puts an Allow/Deny card on a contact's phone and exits 0 only
+  on Allow; deny, error or no answer within `--timeout` (default 5m) is
+  non-zero, and an unanswered card is marked expired. Only that contact's
+  answer to that card counts. The decider is `--to PEER` or the `ask.peer`
+  setting, and must be another identity (typically the idfon app on your
+  phone, added as a contact of the identity the agent uses).
+
+`idfon ask` makes the phone the approval channel for any agent tool. For
+example, a Claude Code hook that holds risky shell commands for a tap:
+
+```sh
+#!/bin/sh
+# .claude/hooks/ask-on-phone.sh (PreToolUse, matcher "Bash")
+cmd=$(jq -r '.tool_input.command')
+case "$cmd" in
+  *"git push"*|*"rm -rf"*) ;;
+  *) exit 0 ;;
+esac
+idfon ask "Run: $cmd" --timeout 2m >/dev/null 2>&1 && exit 0
+echo "Denied on the phone, or no answer: do not run it." >&2
+exit 2
+```
+
+```json
+{ "hooks": { "PreToolUse": [ { "matcher": "Bash",
+  "hooks": [ { "type": "command", "command": ".claude/hooks/ask-on-phone.sh" } ] } ] } }
+```
+
+The agent cannot answer for you (the answer must come from the decider's
+identity), but an agent with shell access can also edit the hook: this guards
+against slips, not against a hostile agent.

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/eve-idfon", "crates/idfon-cli", "crates/idfon-live-media", "crates/idfon-mcp-server", "crates/idfon-radio", "crates/idfon-voice-agent"]
+members = ["crates/eve-idfon", "crates/idfon-cli", "crates/idfon-live-media", "crates/idfon-radio", "crates/idfon-voice-agent"]
 
 [workspace.package]
 license = "MIT OR Apache-2.0"

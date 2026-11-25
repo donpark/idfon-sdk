@@ -23,6 +23,7 @@ use std::{
 use clap::{Parser, Subcommand};
 
 mod card;
+mod mcp_server;
 mod ux;
 use idfon_client::{Client, ClientError};
 use idfon_protocol::{
@@ -33,6 +34,10 @@ use idfon_protocol::{
     ResponseBody,
 };
 use serde_json::{json, Value};
+
+/// The agent guide for this version (`idfon skill`, and the MCP server's
+/// instructions).
+pub const SKILL: &str = include_str!("../../../skills/idfon/SKILL.md");
 
 /// The active profile (`--profile` / `IDFON_PROFILE`), set once in `run`.
 static PROFILE: OnceLock<Option<String>> = OnceLock::new();
@@ -160,6 +165,9 @@ enum Command {
     /// Cards: a question with buttons (and fields) in someone's chat; read the answer
     #[command(subcommand)]
     Card(CardCmd),
+    /// Ask someone (usually you, on your phone) to approve an action; exits 0
+    /// only if they tap Allow. No answer in time counts as no.
+    Ask(AskArgs),
     /// vCard exchange: export a card carrying the idfon ticket, import .vcf files
     #[command(subcommand)]
     Contact(ContactCmd),
@@ -191,6 +199,8 @@ enum Command {
     /// Where idfon keeps things, and its settings (`config show`)
     #[command(subcommand)]
     Config(ConfigCmd),
+    /// Print the agent guide (SKILL.md) for this version of idfon
+    Skill,
     /// Call any daemon method with raw JSON params (`rpc peer.list`)
     Rpc {
         /// Method name, e.g. peer.list (see docs/protocol.md)
@@ -334,6 +344,29 @@ struct CardSendArgs {
     #[arg(long)]
     wait: bool,
     /// How long --wait waits (default 5m)
+    #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "5m")]
+    timeout: Duration,
+}
+
+#[derive(clap::Args)]
+struct AskArgs {
+    /// The question: what you want to do, e.g. "Delete the build folder?"
+    #[arg(value_name = "QUESTION")]
+    question: String,
+    /// Who decides: a contact, usually the idfon app on your phone
+    /// (default: the ask.peer setting)
+    #[arg(long, value_name = "PEER")]
+    to: Option<String>,
+    /// More detail under the question: what exactly will happen
+    #[arg(long)]
+    detail: Option<String>,
+    /// The approve button's label
+    #[arg(long, default_value = "Allow")]
+    allow: String,
+    /// The deny button's label
+    #[arg(long, default_value = "Deny")]
+    deny: String,
+    /// How long to wait; no answer counts as no (default 5m)
     #[arg(long, value_name = "DURATION", value_parser = ux::parse_wait, default_value = "5m")]
     timeout: Duration,
 }
@@ -581,6 +614,10 @@ struct InboxArgs {
     /// Keep printing new messages as they arrive
     #[arg(long, short = 'f')]
     follow: bool,
+    /// Only messages since your last `inbox --new` (the first shows all; kept per
+    /// contact with --from)
+    #[arg(long)]
+    new: bool,
     /// Show at most N recent messages
     #[arg(long, short = 'n', default_value_t = 20)]
     limit: usize,
@@ -875,6 +912,9 @@ enum McpCmd {
         #[arg(long, value_name = "PEER")]
         to: String,
     },
+    /// Run idfon as an MCP server over stdio: every command is a tool
+    /// (`peer add` is `peer_add`); add to a client as `idfon mcp server`
+    Server,
     /// Set the local MCP server that inbound idfon/mcp/1 streams are spliced
     /// to (persisted; `IDFON_MCP_COMMAND` still overrides per process). Pass
     /// an empty command to disable the relay.
@@ -1770,6 +1810,24 @@ fn run() -> io::Result<()> {
             }
             Ok(())
         }
+        Command::Mcp(McpCmd::Server) => {
+            let mut globals = Vec::new();
+            if let Some(profile) = &cli.profile {
+                globals.extend(["--profile".to_owned(), profile.clone()]);
+            }
+            if let Some(socket) = &cli.socket {
+                globals.extend(["--socket".to_owned(), socket.clone()]);
+            }
+            if let Some(identity) = identity {
+                globals.extend(["--identity".to_owned(), identity.to_owned()]);
+            }
+            mcp_server::serve(globals)
+        }
+        Command::Skill => {
+            print!("{SKILL}");
+            Ok(())
+        }
+        Command::Ask(args) => cmd_ask(socket, &args, json, identity),
         Command::Mcp(McpCmd::Listen { to }) => finish(
             call(socket, &rpc::McpListen { peer: to }, identity, cli.stdin_json)?,
             json,
@@ -1871,7 +1929,7 @@ fn run() -> io::Result<()> {
             Ok(())
         }
         Command::Inbox(args) => {
-            ux::cmd_inbox(socket, identity, args.from.as_deref(), args.limit, args.follow, json)
+            ux::cmd_inbox(socket, identity, args.from.as_deref(), args.limit, args.follow, args.new, json)
         }
         Command::Live(command) => match command {
             LiveCmd::Publish {
@@ -2389,15 +2447,47 @@ fn call<M: Method>(
         &encode_json(&request).map_err(io::Error::other)?,
     )?;
     if let ResponseBody::Failure { error, .. } = &response.body {
-        if error.code == ErrorCode::UnknownMethod {
-            eprintln!(
-                "hint: `{}` is unknown to the running daemon, which may be older than \
-                 this CLI; run `idfon shutdown` and retry",
-                request.method
-            );
+        if let Some(hint) = hint_for(&request.method, &error.code, &error.message) {
+            eprintln!("hint: {hint}");
         }
     }
     Ok(response)
+}
+
+/// What to do next after a daemon error, for people and agents: one line
+/// naming the command that helps, or `None` when the message says enough.
+fn hint_for(method: &str, code: &ErrorCode, message: &str) -> Option<String> {
+    let sends = matches!(method, "message.send" | "room.send" | "media.live.dial");
+    Some(match code {
+        ErrorCode::UnknownMethod => format!(
+            "`{method}` is unknown to the running daemon, which may be older than this CLI; \
+             run `idfon shutdown` and retry"
+        ),
+        ErrorCode::CapabilityDenied if message.contains("ticket") => {
+            "the capability ticket is invalid or expired; ask whoever issued it for a new one".into()
+        }
+        ErrorCode::CapabilityDenied if sends => "you have no message.send grant for this contact: \
+             `idfon access check PEER` shows what you may do, `idfon access grant PEER` adds it"
+            .into(),
+        ErrorCode::InvalidRequest if sends && message == "peer not found" => {
+            "`idfon peer list` shows your contacts (names are exact); `idfon peer add` adds one".into()
+        }
+        ErrorCode::InvalidRequest if message.contains("sending identity") => {
+            "that contact is you; to ask yourself (`idfon ask`), add the idfon app on your phone \
+             as a contact and ask it"
+                .into()
+        }
+        ErrorCode::AmbiguousPeer => {
+            "more than one contact matches; use the id from `idfon peer list`".into()
+        }
+        ErrorCode::PeerOffline => {
+            "the contact isn't reachable right now; `idfon peer status PEER` shows their \
+             connection, or try again later"
+                .into()
+        }
+        ErrorCode::CursorTooOld => "that cursor is older than the kept history; run it again without --after".into(),
+        _ => return None,
+    })
 }
 
 /// `call` without `--stdin-json`, for internal steps of a command.
@@ -2647,11 +2737,72 @@ fn start_mac_app(socket: &str) -> Option<Client> {
 /// restarts it. IDFON_IDLE_EXIT_SECS=0 disables the idle exit.
 fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
     match Client::connect(socket) {
-        Ok(client) => Ok(client),
-        Err(ClientError::Connect(_)) => {
-            if let Some(client) = start_mac_app(socket) {
-                return Ok(client);
-            }
+        Ok(client) => restart_if_stale(socket, client),
+        Err(ClientError::Connect(_)) => start_daemon(socket),
+        Err(other) => Err(io::Error::other(other.to_string())),
+    }
+}
+
+/// Checked once per CLI run: the first connection only.
+static FRESHNESS_CHECKED: OnceLock<()> = OnceLock::new();
+
+/// Restarts a daemon this CLI autostarted whose code changed on disk since
+/// it started (a rebuild or an upgrade), as long as no other client is
+/// connected; otherwise keeps `client`. An app's in-process daemon, a daemon
+/// a script started, and a busy one are never restarted.
+fn restart_if_stale(socket: &str, mut client: Client) -> io::Result<Client> {
+    if FRESHNESS_CHECKED.set(()).is_err() {
+        return Ok(client);
+    }
+    let request = Request::call("cli-fresh", &rpc::DaemonStatus {});
+    let Ok(payload) = encode_json(&request) else {
+        return Ok(client);
+    };
+    let Ok(response) = read_json(&mut client, &payload) else {
+        return Ok(client);
+    };
+    let ResponseBody::Success { result, .. } = &response.body else {
+        return Ok(client);
+    };
+    let restartable = result["host"] == "idfond" && result["autostarted"] == true;
+    if !restartable || result["build"]["stale"] != true {
+        return Ok(client);
+    }
+    // Busy: another client, or broadcasts a restart would cut.
+    let broadcasting = encode_json(&Request::call("cli-fresh", &rpc::LiveList {}))
+        .ok()
+        .and_then(|payload| read_json(&mut client, &payload).ok())
+        .and_then(|response| match response.body {
+            ResponseBody::Success { result, .. } => Some(result),
+            _ => None,
+        })
+        .is_some_and(|result| result["publishers"].as_array().is_some_and(|list| !list.is_empty()));
+    if result["clients"].as_u64().unwrap_or(u64::MAX) > 1 || broadcasting {
+        eprintln!(
+            "hint: the daemon runs older code than is on disk but is busy; it restarts after it \
+             idles out, or now with `idfon shutdown`"
+        );
+        return Ok(client);
+    }
+    let shutdown = Request::call("cli-restart", &rpc::DaemonShutdown {});
+    if let Ok(payload) = encode_json(&shutdown) {
+        let _ = read_json(&mut client, &payload);
+    }
+    drop(client);
+    let deadline = std::time::Instant::now() + DAEMON_START_TIMEOUT;
+    while Client::connect(socket).is_ok() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    eprintln!("idfon: restarted the daemon (its code changed on disk)");
+    start_daemon(socket)
+}
+
+/// Starts the daemon for `socket` (the mac app, else idfond) and connects.
+fn start_daemon(socket: &str) -> io::Result<Client> {
+    if let Some(client) = start_mac_app(socket) {
+        return Ok(client);
+    }
+    {
             match find_daemon_binary() {
                 Some(daemon) => {
                     let run_dir = Path::new(socket)
@@ -2691,6 +2842,9 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
                         let spawned = StdCommand::new(&daemon)
                             .args(&location)
                             .args(RELAY_ARGS.get().map_or(&[][..], Vec::as_slice))
+                            // Marks it disposable: `restart_if_stale` may
+                            // restart it after a rebuild.
+                            .env("IDFON_AUTOSTARTED", "1")
                             .env(
                                 "IDFON_IDLE_EXIT_SECS",
                                 if *KEEP_ALIVE.get().unwrap_or(&false) {
@@ -2728,8 +2882,6 @@ fn connect_or_start_daemon(socket: &str) -> io::Result<Client> {
                     "daemon unavailable and idfond not found (install it or add it to PATH)",
                 )),
             }
-        }
-        other => other.map_err(|error| io::Error::other(error.to_string())),
     }
 }
 
@@ -3004,6 +3156,29 @@ fn cmd_card_send(socket: &str, args: &CardSendArgs, json: bool, identity: Option
     print_answer(socket, identity, Some(&target), Some(&id), baseline, args.timeout, json)
 }
 
+/// Waits for an `IDFON-UI-ACTION/1` from `target` (anyone if `None`) to
+/// `card_id` (any card if `None`); returns the sender id and the answer.
+fn wait_answer(
+    socket: &str,
+    identity: Option<&str>,
+    target: Option<&idfon_protocol::Peer>,
+    card_id: Option<&str>,
+    baseline: Option<String>,
+    timeout: Duration,
+) -> io::Result<Option<(String, card::Answer)>> {
+    let event = ux::wait_message(socket, identity, baseline, timeout, |event| {
+        let data = &event["data"];
+        let from_target = target.is_none_or(|peer| ux::peer_matches(peer, data["peer_id"].as_str().unwrap_or("")));
+        let answer = card::parse_answer(data["text"].as_str().unwrap_or(""));
+        from_target && answer.is_some_and(|answer| card_id.is_none_or(|id| answer.card == id))
+    })?;
+    Ok(event.map(|event| {
+        let peer = event["data"]["peer_id"].as_str().unwrap_or_default().to_owned();
+        let answer = card::parse_answer(event["data"]["text"].as_str().unwrap_or("")).expect("matched an answer");
+        (peer, answer)
+    }))
+}
+
 /// Wait for an `IDFON-UI-ACTION/1` and print it: `bob chose yes` plus one
 /// `field=value` line per typed field (`--json`: card, action, values, peer).
 fn print_answer(
@@ -3015,17 +3190,13 @@ fn print_answer(
     timeout: Duration,
     json: bool,
 ) -> io::Result<()> {
-    let event = ux::wait_message(socket, identity, baseline, timeout, |event| {
-        let data = &event["data"];
-        let from_target = target.is_none_or(|peer| ux::peer_matches(peer, data["peer_id"].as_str().unwrap_or("")));
-        let answer = card::parse_answer(data["text"].as_str().unwrap_or(""));
-        from_target && answer.is_some_and(|answer| card_id.is_none_or(|id| answer.card == id))
-    })?;
-    let Some(event) = event else {
-        return Err(io::Error::other(format!("no answer within {}s", timeout.as_secs())));
+    let Some((peer, answer)) = wait_answer(socket, identity, target, card_id, baseline, timeout)? else {
+        let keep_waiting = match (target, card_id) {
+            (Some(peer), Some(card)) => format!("; keep waiting with `idfon card wait {} --card {card}`", peer.name),
+            _ => String::new(),
+        };
+        return Err(io::Error::other(format!("no answer within {}{keep_waiting}", ux::human_duration(timeout))));
     };
-    let peer = event["data"]["peer_id"].as_str().unwrap_or_default().to_owned();
-    let answer = card::parse_answer(event["data"]["text"].as_str().unwrap_or("")).expect("matched an answer");
     if json {
         println!(
             "{}",
@@ -3039,6 +3210,93 @@ fn print_answer(
         println!("{field}={}", value.as_str().unwrap_or_default());
     }
     Ok(())
+}
+
+/// `idfon ask`: a yes/no card to the decider, then their answer. Allowed is
+/// exit 0; denied, no answer (the card is then marked expired, so a late tap
+/// does nothing) or any error is non-zero. Only the decider's own answer to
+/// this card counts.
+fn cmd_ask(socket: &str, args: &AskArgs, json: bool, identity: Option<&str>) -> io::Result<()> {
+    let decider = args
+        .to
+        .clone()
+        .or_else(|| idfon_config::get("IDFON_ASK_PEER"))
+        .ok_or_else(|| {
+            io::Error::other(
+                "no one to ask: pass --to PEER, or set a default with `idfon config set ask.peer PEER` \
+                 (a contact, such as the idfon app on your phone)",
+            )
+        })?;
+    let target = ux::resolve_peer(socket, identity, &decider)?;
+    let id = format!(
+        "ask-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos()
+    );
+    let mut body = json!({
+        "kind": "card",
+        "id": id,
+        "title": args.question,
+        "glyph": "checkmark.shield",
+        "actions": [{"id": "allow", "title": args.allow}, {"id": "deny", "title": args.deny}],
+    });
+    if let Some(detail) = &args.detail {
+        body["subtitle"] = json!(detail);
+    }
+    let send = |body: &Value, attempt: &str| {
+        call_plain(
+            socket,
+            &rpc::MessageSend {
+                peer: target.id.clone(),
+                text: Some(card::card_envelope(body)),
+                idempotency_key: format!("{id}-{attempt}"),
+                conversation: None,
+                context: None,
+                capability_ticket: None,
+                retries: None,
+                delivery: None,
+            },
+            identity,
+        )
+    };
+    let baseline = ux::latest_cursor(socket, identity);
+    let response = send(&body, "ask")?;
+    if !response.ok {
+        return finish(response, json);
+    }
+    if !json {
+        eprintln!("asked {}; waiting up to {}...", target.name, ux::human_duration(args.timeout));
+    }
+    let answer = wait_answer(socket, identity, Some(&target), Some(&id), baseline, args.timeout)?;
+    let allowed = answer.as_ref().is_some_and(|(_, answer)| answer.action == "allow");
+    if answer.is_none() {
+        let mut expired = body.clone();
+        expired.as_object_mut().expect("card is an object").remove("actions");
+        expired["subtitle"] = json!(format!("Expired: no answer within {}", ux::human_duration(args.timeout)));
+        let _ = send(&expired, "expired");
+    }
+    if json {
+        println!(
+            "{}",
+            json!({"allowed": allowed, "answered": answer.is_some(), "peer": target.name, "card": id})
+        );
+    }
+    match answer {
+        Some(_) if allowed => {
+            if !json {
+                println!("allowed by {}", target.name);
+            }
+            Ok(())
+        }
+        Some(_) => Err(io::Error::other(format!("denied by {}", target.name))),
+        None => Err(io::Error::other(format!(
+            "no answer from {} within {}; treat it as no",
+            target.name,
+            ux::human_duration(args.timeout)
+        ))),
+    }
 }
 
 fn send_payload(
@@ -3121,8 +3379,9 @@ fn send_payload(
             ),
             None => {
                 return Err(io::Error::other(format!(
-                    "sent, but no reply from {peer} within {}s",
-                    args.timeout.as_secs()
+                    "sent, but no reply from {peer} within {}; a later reply shows in \
+                     `idfon inbox --from {peer} --new`",
+                    ux::human_duration(args.timeout)
                 )))
             }
         }
@@ -3225,14 +3484,16 @@ fn cmd_recv(
         Some(event) => event,
         None => {
             let after = ux::latest_cursor(socket, identity);
-            eprintln!("waiting up to {}s for a file...", timeout.as_secs());
+            eprintln!("waiting up to {} for a file...", ux::human_duration(timeout));
             ux::wait_message(socket, identity, after, timeout, is_file)?.ok_or_else(|| {
                 io::Error::other(format!(
-                    "no file arrived within {}s{}",
-                    timeout.as_secs(),
+                    "no file arrived within {}{}; once it is sent, run recv again (it takes a \
+                     file that arrived in the last {})",
+                    ux::human_duration(timeout),
                     from.as_ref()
                         .map(|peer| format!(" from {}", peer.name))
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
+                    ux::human_duration(since)
                 ))
             })?
         }
