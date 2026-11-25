@@ -28,7 +28,7 @@ panic = "abort"
 strip = "symbols"
 
 
-# Forks, pinned by rev (iroh-live upgrade, donpark/idfon#209):
+# Forks, pinned by rev (iroh-live upgrade, donpark/idfon-legacy#209):
 # - moq: donpark/moq branch liquid-codec-next, on moq-dev/moq 4a6f52248 (the rev
 #   iroh-live pins). LiquidCodec, libopus 1.6.1, opt-in gap recovery, Opus FEC knob.
 # - iroh-live: donpark/iroh-live branch audio-renditions-next, on n0-computer 60a3fcf.
