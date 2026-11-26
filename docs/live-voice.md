@@ -79,17 +79,52 @@ pnpm eve clean                    # remove dist/.output everywhere
 
 pnpm agent build llm      # eve build in agents/llm
 pnpm agent clean llm
-pnpm agent restart gpt-live-1     # stop then start; needs AI_GATEWAY_API_KEY
+pnpm agent restart gpt-live-1     # stop then start
 pnpm agent kill gpt-live-1        # force-stop the manager + holder/bridge/eve
 pnpm agent list                   # agents, mode, pid/status, port, home
 ```
 
 `pnpm agent build all` / `clean all` cover every `agents/*` directory and skip
-agents without an installed `eve`; `start`/`stop`/`restart`/`kill` apply to the
-agents with a `scripts/<name>-serve.sh` (under `all`, the rest are reported as
-skipped rather than silently ignored). `stop` is graceful — the serve script's
+agents without an installed `eve`. `start`/`stop`/`restart`/`kill all` cover
+the agents with an `agents/<name>/agent/agent.ts` (served by their own
+`scripts/<name>-serve.sh` when there is one, else by `live-voice-serve.sh`).
+radio is not among them: its serve script needs an instance argument
+(`scripts/radio-serve.sh <instance>`). `stop` is graceful — the serve script's
 trap tears down its holder/bridge/eve children; `kill` is a forced SIGKILL that
 also reaps them.
+
+### Serving agents: what must hold
+
+`pnpm agent restart all` should bring every agent up from any shell, including
+an AI session's. Each item below broke it once (2026-11-26):
+
+- **Keys come from `idfon-sdk/.env`.** `scripts/lib/core.sh`, sourced by every
+  script, loads that gitignored file (`KEY=VALUE`); a variable already set in
+  the shell wins. The agents only inherit the environment. Gateway models
+  (`provider/model`) need `AI_GATEWAY_API_KEY`. An AI session's shell exports
+  no keys, so if the file lacks one, ask the owner; don't search shell
+  profiles or secrets files.
+- **Saved profiles override the agent.** A start sources
+  `~/.idfon/<instance>/instance.env` when it exists, and its `EVE_AGENT`,
+  `EVE_INSTANCE` and `EVE_LIVE_CONFIG` win. Nothing writes these files any
+  more; old ones hold absolute paths and agent names. After moving the repo or
+  renaming an agent, check `grep -H . ~/.idfon/*/instance.env`. Symptoms:
+  `EVE_LIVE_CONFIG points at a missing live config` or `no agent '<name>'`,
+  both of which name the profile.
+- **Builds take turns.** A start rebuilds the holder (and the core dylib,
+  `idfond`, the CLI) when any Rust source is newer, then `codesign`s them.
+  `all` starts every agent at once, so the build runs under
+  `$core_target/.serve-build.lock`; concurrent `codesign`s of the shared dylib
+  fail. Keep any new build step inside that lock. After a core change, the
+  first agent builds and the rest wait.
+- **Pinned ports are unique.** Each instance pins its holder's UDP port in
+  `~/.idfon/<instance>/endpoint-port` so its address survives restarts. A new
+  pin is `58000 + cksum(instance) % 1000`, moved past ports another instance
+  holds (monitor and radio-world collide at 58330). A saved collision prints a
+  warning; delete the second agent's `endpoint-port` to re-pin it.
+
+To check: `pnpm agent list`, then the last line of
+`~/.idfon/<agent>/serve-manager.log` (`serving; Ctrl-C to stop` when up).
 
 **Agents and sessions.** An *agent* is an identity + config + process: one
 home (`~/.idfon/<agent>`), one keypair, one pinned port. `pnpm agent` is

@@ -35,6 +35,10 @@ for this repo's crates. A core change that breaks this repo is fixed in core.
 - CLI end to end: `scripts/test-cli.sh`. Eve: the `scripts/eve-*-e2e.sh`
   scripts (mock models, no keys needed).
 - TypeScript: `npm test` in `integrations/eve-idfon`.
+- Serving agents (`pnpm agent`, `scripts/live-voice-serve.sh`): read "Serving
+  agents: what must hold" in `docs/live-voice.md` before changing them or
+  debugging a start. Keys come from the gitignored `idfon-sdk/.env`; don't
+  search shell profiles or secrets files for them.
 
 
 - **Verify before retrying.** For network, device, or model checks, keep the returned operation ID and inspect that operation and its events before sending again. Reusing an idempotency key returns the existing operation; it does not re-run it. A new key creates a new request and may create another model turn.

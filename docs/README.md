@@ -33,7 +33,7 @@ kept because it records decisions; **design** = not all implemented.
 | `idfon-artifacts.md` | artifact model, references, remote view, voice/spoken projection, accessibility |
 | `idfon-artifacts-testing.md` | manual artifact/reference test runbook |
 | `idfon-eve.md` | idfon as an Eve ingress channel (implemented) |
-| `live-voice.md` | the voice agent built on the Eve channel; transport + front-end decision |
+| `live-voice.md` | the voice agent built on the Eve channel; transport + front-end decision; `pnpm agent` and "Serving agents: what must hold" (keys from `.env`, saved `instance.env` profiles, the build lock, pinned ports) |
 | `voice-agent.md` | voice agents that speak/listen for other agents (wrapped / injected); the governing architecture: one process by default (the iPhone shape), seams over processes (voice pipe / cascade / wrap), the voice-agent layer boundary (optimizations, cue caches and greeting policy belong to the agent, not the app shell), route-owned effective speech defaults in Contact Detail, bridge→library refactor (design) |
 | `voice-agent-modes.md` | on-device vs passive-remote vs proxy, where the latency goes, and how per-contact speech defaults follow client/server route ownership |
 | `voice-prompt-lab.md` | iterate voice-agent prompts headlessly (`scripts/voice-prompt-lab.sh`, scoring + variants) |

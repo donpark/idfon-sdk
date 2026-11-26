@@ -172,21 +172,25 @@ pnpm eve build      # eve-idfon + all agents
 pnpm eve clean      # remove dist/.output everywhere
 ```
 
-Use `pnpm agent` to manage individual agents:
+Use `pnpm agent` to manage agents. Keys such as `AI_GATEWAY_API_KEY` go in the
+gitignored `idfon-sdk/.env`, which the scripts load. If `restart all` leaves an
+agent stopped, see "Serving agents: what must hold" in
+[docs/live-voice.md](docs/live-voice.md).
 
 ```sh
 pnpm agent build <name|all>     # eve build in agents/<name>
 pnpm agent clean <name|all>
-pnpm agent start <name>         # needs scripts/<name>-serve.sh
-pnpm agent restart <name>       # stop then start
-pnpm agent stop <name>
+pnpm agent start <name|all>     # any agents/<name>/agent/agent.ts
+pnpm agent restart <name|all>   # stop then start
+pnpm agent stop <name|all>
+pnpm agent list
 ```
 
 The agents under `agents/` are:
 
 | Agent | Served | What it is |
 | --- | --- | --- |
-| `live-voice` | yes | GPT-Live full-duplex voice agent (audio/video calls, artifacts) |
+| `gpt-live-1` | yes | GPT-Live full-duplex voice agent (audio/video calls, artifacts) |
 | `llm` | yes | text-only agent reached by voice. The model is per-instance, so one agent can back several contacts |
 | `agency` | yes | go-between. It introduces registered agents (A2A card relay) and signs nothing |
 | `chat-echo` | no | deterministic echo mock used by the e2e scripts and `eve-spike` |
