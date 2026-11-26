@@ -2,7 +2,9 @@
 // The evidence base for voice style adaptation research — does friction
 // (re-asks, repair, early hangups) concentrate where user speaking habits and
 // agent behavior mismatch? Habit stats, behavior stats, raw friction events,
-// and turns only: no classifiers, no models, no adaptation logic.
+// and turns only: no classifiers, no models, no adaptation logic. The record
+// carries no conversation text: turns are timings and sizes, and the stats are
+// derived from the text in memory before the record is written.
 
 /** Reserved for RCS-style paralinguistic annotation strings (e.g.
  * `([emotion angry=0.81, neutral=0.12],[sarcasm value=0.04])`). Always null in
@@ -18,12 +20,14 @@ export type TurnRole = "user" | "agent";
 
 /** One conversational turn. `started_ms`/`duration_ms` are call-relative
  * (call start = 0): user turns cover the captured utterance, agent turns cover
- * the reply delivery (TTS + posting), approximating the audible window. */
+ * the reply delivery (TTS + posting), approximating the audible window.
+ * `text_chars`/`words` size the turn's transcript; the text itself is not kept. */
 export interface TurnEntry {
-  text: string;
   role: TurnRole;
   started_ms: number;
   duration_ms: number;
+  text_chars: number;
+  words: number;
   how: Paralinguistics;
 }
 
@@ -33,7 +37,6 @@ export type FrictionType = "reask" | "repair" | "barge_restart" | "early_hangup"
 export interface FrictionEvent {
   type: FrictionType;
   turn_index: number;
-  excerpt: string;
 }
 
 /** Nearest-rank percentiles over the call's turns. */
@@ -56,7 +59,7 @@ export interface BcdSummary {
 }
 
 export interface CallRecord {
-  schema: "eve-idfon-voice.call-observe/1";
+  schema: "eve-idfon-voice.call-observe/2";
   call_id: string;
   started_at: string;
   duration_ms: number;

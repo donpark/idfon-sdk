@@ -10,6 +10,11 @@
 //! rendered into instructions) so a transcript cannot forge a speaker label.
 //! The store keeps every record (audit copy); `drain` moves a cursor, so Eve
 //! history is the model's view of the append-only log.
+//!
+//! Conversation text stays in memory: the on-disk copy keeps each record's
+//! kind, speaker, ids, timings and counts, with `text` replaced by its length
+//! (`text_chars`). Records still undrained when the holder restarts reach Eve
+//! without their text.
 
 use std::{
     collections::HashMap,
@@ -34,8 +39,12 @@ pub struct VoiceRecord {
     /// "caller" | "agent" for transcripts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
+    /// In memory only; the on-disk copy carries `text_chars` instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Length of `text` in chars, set on the on-disk copy in place of the text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_chars: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
     /// Set on a `playback_truncated` record: the message the user heard part of.
@@ -57,6 +66,7 @@ impl VoiceRecord {
             kind: "transcript".into(),
             speaker: Some(speaker.into()),
             text: Some(text.into()),
+            text_chars: None,
             call_id: Some(call_id.into()),
             msg_id: None,
             duration_seconds: None,
@@ -71,6 +81,7 @@ impl VoiceRecord {
             kind: "call_summary".into(),
             speaker: None,
             text: None,
+            text_chars: None,
             call_id: Some(call_id.into()),
             msg_id: None,
             duration_seconds: Some(duration_seconds),
@@ -89,12 +100,22 @@ impl VoiceRecord {
             kind: "playback_truncated".into(),
             speaker: Some("agent".into()),
             text: Some(heard_until.into()),
+            text_chars: None,
             call_id: Some(call_id.into()),
             msg_id: Some(msg_id.into()),
             duration_seconds: None,
             turn_count: None,
             at_ms: now_ms(),
         }
+    }
+
+    /// The on-disk form: the conversation text replaced by its length.
+    fn without_text(&self) -> Self {
+        let mut record = self.clone();
+        if let Some(text) = record.text.take() {
+            record.text_chars = Some(text.chars().count() as u64);
+        }
+        record
     }
 }
 
@@ -165,7 +186,13 @@ impl RecordStore {
 
     fn persist(&self, peer_id: &str, log: &PeerLog) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.root)?;
-        let bytes = serde_json::to_vec(log)?;
+        let on_disk = PeerLog {
+            next_seq: log.next_seq,
+            drained_upto: log.drained_upto,
+            last_drained_turn: log.last_drained_turn.clone(),
+            records: log.records.iter().map(VoiceRecord::without_text).collect(),
+        };
+        let bytes = serde_json::to_vec(&on_disk)?;
         std::fs::write(self.file(peer_id), bytes)
     }
 
@@ -265,7 +292,32 @@ mod tests {
         let reopened = RecordStore::open(dir.clone());
         let second = reopened.drain("peer-a", "turn-2");
         assert_eq!(second.len(), 1);
-        assert_eq!(second[0].text.as_deref(), Some("again"));
+        assert_eq!(second[0].call_id.as_deref(), Some("call-2"));
+        assert_eq!(second[0].speaker.as_deref(), Some("caller"));
+        // The text stayed in memory; the file kept only its length.
+        assert_eq!(second[0].text, None);
+        assert_eq!(second[0].text_chars, Some(5));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn text_is_drained_from_memory_but_never_written() {
+        let (store, dir) = temp_store();
+        store.append(
+            "peer-c",
+            VoiceRecord::transcript("call-1", "caller", "what is on my calendar"),
+        );
+        store.append(
+            "peer-c",
+            VoiceRecord::playback_truncated("call-1", "msg-1", "You have two"),
+        );
+        let raw = std::fs::read_to_string(store.file("peer-c")).expect("record file");
+        assert!(!raw.contains("calendar") && !raw.contains("You have two"));
+        assert!(raw.contains("\"text_chars\":22") && raw.contains("\"text_chars\":12"));
+        // The live drain still hands Eve the text.
+        let drained = store.drain("peer-c", "turn-1");
+        assert_eq!(drained[0].text.as_deref(), Some("what is on my calendar"));
+        assert_eq!(drained[0].text_chars, None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

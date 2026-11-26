@@ -70,7 +70,8 @@ const TRAIT = (() => {
 })();
 
 // The decision log: one JSON line per decision, the training-record shape of
-// docs/voice-decisions.md. The trait + params ride every record.
+// docs/voice-decisions.md. The trait + params ride every record. Transcripts
+// and replies are recorded as their lengths (`*_chars`), not their text.
 function recordDecision(entry) {
   const path = process.env.TYGER_DECISION_LOG;
   if (!path) return;
@@ -223,8 +224,8 @@ class Call {
         break;
       case "endpoint": // a new reply never overlaps the last: stop playing it
         this.stopPlayback();
-        log.info("endpoint", { transcript: m.transcript });
-        recordDecision({ kind: "endpoint", via: "ws", transcript: m.transcript });
+        log.info("endpoint", { transcript_chars: m.transcript?.length });
+        recordDecision({ kind: "endpoint", via: "ws", transcript_chars: m.transcript?.length });
         break;
       case "barge": // the caller cut in: stop playing at once
         this.stopPlayback();
@@ -237,8 +238,8 @@ class Call {
         break;
       case "backchannel":
       case "backchannel_done":
-        log.info(m.type, { text: m.text, aborted: m.aborted });
-        recordDecision({ kind: m.type, via: "ws", text: m.text });
+        log.info(m.type, { text_chars: m.text?.length, aborted: m.aborted });
+        recordDecision({ kind: m.type, via: "ws", text_chars: m.text?.length });
         break;
       case "busy":
       case "error":
@@ -601,11 +602,9 @@ class Mouth {
     }
     if (barged && this.curText) {
       const heard = this.heardRatio();
-      log.info("barge: keeping only what the caller heard", {
-        heard_ratio: +heard.toFixed(2),
-        heard_text: this.curText.slice(0, Math.round(this.curText.length * heard)),
-      });
-      recordDecision({ kind: "truncation", heard_ratio: +heard.toFixed(2), heard_text: this.curText.slice(0, Math.round(this.curText.length * heard)) });
+      const heardChars = Math.round(this.curText.length * heard);
+      log.info("barge: keeping only what the caller heard", { heard_ratio: +heard.toFixed(2), heard_chars: heardChars });
+      recordDecision({ kind: "truncation", heard_ratio: +heard.toFixed(2), heard_chars: heardChars });
       this.stats.barges++;
     }
     this.pieces = this.pieces.filter((p) => p.posted); // what played stays in the 2nd ear
@@ -624,8 +623,8 @@ class Mouth {
         this.stopPlayback(); // a new reply never overlaps the last
         const lastEnd = this.speech.filter((iv) => iv.end <= this.hopS).pop()?.end;
         const deadAir = lastEnd == null ? null : +(this.hopS - lastEnd).toFixed(2);
-        log.info("endpoint", { transcript: ev.transcript, turn_s: ev.turn_s, by: ev.by, dead_air_s: deadAir });
-        recordDecision({ kind: "endpoint", via: "ears", transcript: ev.transcript, p_end: ev.p_end, turn_s: ev.turn_s, dead_air_s: deadAir });
+        log.info("endpoint", { transcript_chars: ev.transcript?.length, turn_s: ev.turn_s, by: ev.by, dead_air_s: deadAir });
+        recordDecision({ kind: "endpoint", via: "ears", transcript_chars: ev.transcript?.length, p_end: ev.p_end, turn_s: ev.turn_s, dead_air_s: deadAir });
         if (deadAir != null && deadAir > 1.2) {
           adapt.bump("late_endpoint"); // they stopped and we made them wait
         } else {
@@ -644,10 +643,13 @@ class Mouth {
       case "BACKCHANNEL": {
         const hint = (ev.partial || "").trim();
         const list = TRAIT.mouth.backchannels ?? ["mm-hm"];
-        const text = hint && hint.length <= 24 ? hint : list[this.bcIndex++ % list.length];
+        const fromHint = !!hint && hint.length <= 24;
+        const text = fromHint ? hint : list[this.bcIndex++ % list.length];
         this.stats.backchannels++;
-        log.info("backchannel", { text, bc_prob: ev.bc_prob });
-        recordDecision({ kind: "backchannel", via: "ears", text, bc_prob: ev.bc_prob });
+        // The hint is the caller's partial words: log its size and source, not the text.
+        const from = fromHint ? "hint" : "list";
+        log.info("backchannel", { text_chars: text?.length, from, bc_prob: ev.bc_prob });
+        recordDecision({ kind: "backchannel", via: "ears", text_chars: text?.length, from, bc_prob: ev.bc_prob });
         if (text) await this.speak(text, { bc: true });
         if (text) {
           const at = this.hopS;
@@ -673,8 +675,8 @@ class Mouth {
     this.replyText = text;
     this.replyStartS = (this.pace === "audio" ? this.hopS : this.audioS) + LEAD_S; // where the reply starts in the stream
     await this.speak(text, {});
-    log.info("reply", { text, turns: this.stats.turns });
-    recordDecision({ kind: "reply", text, turns: this.stats.turns });
+    log.info("reply", { text_chars: text.length, turns: this.stats.turns });
+    recordDecision({ kind: "reply", text_chars: text.length, turns: this.stats.turns });
   }
 }
 

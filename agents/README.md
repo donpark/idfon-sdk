@@ -30,6 +30,18 @@ extra work, such as the agency's provisioner.
 unset. An empty `EVE_IDFON_MODEL=` keeps the agent's own model (e.g. a mock).
 Only a gateway model id (`provider/model`) needs `AI_GATEWAY_API_KEY`.
 
+## Run data
+
+Eve keeps each session's run state in `agents/<name>/.eve/.workflow-data/`
+(the local Workflow world). Every agent sets
+`experimental.workflow.retention: 0`, so the world deletes a run's inputs,
+outputs and stream contents when the run ends. Under `eve start` this is
+already Eve's default for idfon sessions (private or unknown audience); the
+setting also covers `eve dev`. An active session keeps its payloads on disk
+until it ends, because Eve needs them to resume. Run records (ids, timestamps,
+statuses, step names, attributes such as `$eve.title`) stay for the world's
+default period. Keep the setting when you add an agent.
+
 ## Talking to idfon from a tool
 
 Use the shared client and envelope builders (`integrations/eve-idfon/README.md`):

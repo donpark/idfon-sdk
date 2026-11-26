@@ -12,20 +12,22 @@ import type { CallRecord } from "../src/observe/schema.ts";
 
 const HOW_NULLS = { emotion: null, sarcasm: null, delivery: null };
 
-test("record shape carries the reserved paralinguistic slot as nulls", () => {
+test("record shape carries turn sizes, no text, and the reserved paralinguistic slot as nulls", () => {
   const rec = new CallRecorder("call-x", new Date(1_700_000_000_000));
   rec.addTurn({ text: "hi there", role: "user", started_ms: 0, duration_ms: 900 });
   rec.addTurn({ text: "Hello!", role: "agent", started_ms: 1_000, duration_ms: 500 });
   const record = rec.build(new Date(1_700_000_600_000));
-  assert.equal(record.schema, "eve-idfon-voice.call-observe/1");
+  assert.equal(record.schema, "eve-idfon-voice.call-observe/2");
   assert.equal(record.call_id, "call-x");
   assert.equal(record.started_at, "2023-11-14T22:13:20.000Z");
   assert.equal(record.duration_ms, 600_000);
   assert.equal(record.turn_count, 2);
   assert.deepEqual(record.turns, [
-    { text: "hi there", role: "user", started_ms: 0, duration_ms: 900, how: HOW_NULLS },
-    { text: "Hello!", role: "agent", started_ms: 1_000, duration_ms: 500, how: HOW_NULLS },
+    { role: "user", started_ms: 0, duration_ms: 900, text_chars: 8, words: 2, how: HOW_NULLS },
+    { role: "agent", started_ms: 1_000, duration_ms: 500, text_chars: 6, words: 1, how: HOW_NULLS },
   ]);
+  // the transcript text never reaches the record
+  assert.ok(!JSON.stringify(record).includes("hi there"));
   // every how field must be able to carry annotation strings later: null now
   for (const turn of record.turns) assert.deepEqual(turn.how, HOW_NULLS);
 });
@@ -74,7 +76,7 @@ test("friction: re-asks join similar user turns ~3 turns apart", () => {
   rec.addTurn({ text: "and weekends, what time does it close", role: "user", started_ms: 11000, duration_ms: 1800 });
   const record = rec.build(new Date(60_000));
   assert.deepEqual(record.friction, [
-    { type: "reask", turn_index: 4, excerpt: "what time does the museum close tomorrow" },
+    { type: "reask", turn_index: 4 },
   ]);
 });
 
@@ -87,8 +89,8 @@ test("friction: repair initiator and barge-in-then-restart join", () => {
   rec.addTurn({ text: "Let me explain again.", role: "agent", started_ms: 4000, duration_ms: 2000 });
   const record = rec.build(new Date(60_000));
   assert.deepEqual(record.friction, [
-    { type: "barge_restart", turn_index: 2, excerpt: "wait, what do you mean" },
-    { type: "repair", turn_index: 2, excerpt: "wait, what do you mean" },
+    { type: "barge_restart", turn_index: 2 },
+    { type: "repair", turn_index: 2 },
   ]);
 });
 
@@ -98,7 +100,7 @@ test("friction: early hangup trips on turn count or duration", () => {
   short.addTurn({ text: "hello", role: "agent", started_ms: 400, duration_ms: 600 });
   // 2 turns (< EARLY_HANGUP_TURNS) and 20 s (< EARLY_HANGUP_MS): trips both
   const record = short.build(new Date(20_000));
-  assert.deepEqual(record.friction, [{ type: "early_hangup", turn_index: 1, excerpt: "" }]);
+  assert.deepEqual(record.friction, [{ type: "early_hangup", turn_index: 1 }]);
 
   const fewTurns = new CallRecorder("call-long-but-few", new Date(0));
   fewTurns.addTurn({ text: "hi", role: "user", started_ms: 0, duration_ms: 300 });

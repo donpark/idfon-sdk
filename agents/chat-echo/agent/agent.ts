@@ -9,4 +9,6 @@ const selected = process.env.EVE_IDFON_MODEL;
 export default defineAgent({
   model: selected || mockModel(({ lastUserMessage }) => `reply from eve: ${lastUserMessage}`),
   ...(selected ? {} : { modelContextWindowTokens: 32_768 }),
+  // Delete run payloads when a run ends, under `eve dev` too (agents/README.md, "Run data").
+  experimental: { workflow: { retention: 0 } },
 });

@@ -296,6 +296,9 @@ to the cascade.
   `kind`/`speaker` schema (`transcript` for caller/agent finals, `call_summary`
   at hangup); `drain` advances a cursor, so the buffer survives a holder
   restart. Per-peer records are capped (oldest trimmed, cursor advanced).
+  Transcript text stays in memory: the file keeps each record's kind, speaker,
+  ids, timings and counts, with `text` replaced by `text_chars`. A record still
+  undrained across a holder restart reaches Eve without its text.
 - **Fetch**: the resolver POSTs `{peer_id, turn_id}` to the loopback bridge
   `/records/drain`, which forwards `records.drain` over holder IPC. `drain` is
   **idempotent per `turnId`**: a replayed/resumed turn returns nothing.

@@ -21,6 +21,9 @@ type VoiceRecord = {
   kind: string;
   speaker?: "caller" | "agent";
   text?: string;
+  /** Set instead of `text` on a record that was undrained across a holder
+   * restart: the holder keeps conversation text in memory only. */
+  text_chars?: number;
   call_id?: string;
   duration_seconds?: number;
   turn_count?: number;
