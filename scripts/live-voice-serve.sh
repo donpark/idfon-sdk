@@ -89,12 +89,32 @@ fi
 # Pin the holder's UDP port so its endpoint address survives restarts and the
 # apps do not need re-pairing. Deterministic per agent, persisted, overridable.
 port_file="$home/endpoint-port"
+# True when another instance under ~/.idfon has pinned port $1.
+pinned_elsewhere() {
+  local file
+  for file in "$HOME"/.idfon/*/endpoint-port; do
+    [ "$file" = "$port_file" ] && continue
+    [ -s "$file" ] && [ "$(cat "$file")" = "$1" ] && return 0
+  done
+  return 1
+}
 if [ -n "${EVE_VOICE_PORT:-}" ]; then
   endpoint_port="$EVE_VOICE_PORT"
 elif [ -s "$port_file" ]; then
   endpoint_port=$(cat "$port_file")
 else
   endpoint_port=$((58000 + $(printf '%s' "$instance" | cksum | awk '{print $1}') % 1000))
+  # Names can hash to the same port (monitor and radio-world both give 58330);
+  # take the next one no other instance has pinned.
+  probes=0
+  while pinned_elsewhere "$endpoint_port" && [ "$probes" -lt 1000 ]; do
+    endpoint_port=$((58000 + (endpoint_port - 58000 + 1) % 1000))
+    probes=$((probes + 1))
+  done
+fi
+if pinned_elsewhere "$endpoint_port"; then
+  echo "warning: endpoint port $endpoint_port is also pinned by another instance; whichever starts second" >&2
+  echo "         gets a random port. Delete $port_file to pick a free one." >&2
 fi
 printf '%s' "$endpoint_port" > "$port_file" 2>/dev/null || true
 integration="$root/integrations/eve-idfon"
