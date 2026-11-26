@@ -58,6 +58,41 @@ model-chosen value as attacker-chosen.
   never on a command line (`ps` shows it to every local user), and never fall
   back to a default secret.
 
+## Agent pairing
+
+Read this before pairing, renaming, rekeying or retiring an agent.
+`docs/live-voice.md` ("Pairing the Apple apps") has the manual steps.
+
+- **Use the scripts.** `pnpm agent:pair <name...|all> [--drop NAME]...` pairs
+  running agents with the mac app and one iPhone; `pnpm agent:rekey
+  <name...|weak>` rotates identity keys (stop, move `holder.key` aside, start,
+  wait, pair). `scripts/agent-keys.sh` holds what they learned:
+  - mac: the contact goes into the daemon on `/tmp/idfon/idfond.sock`
+    (replacing one of the same name); the script never talks to a socket
+    nobody listens on, since the CLI would spawn a blank daemon there. The
+    holder ticket goes in `defaults com.idfon.mac idfon.capabilityTickets`.
+  - iPhone: all contacts in one launch (`-unpair`/`-pair`, then `-pair-exit`),
+    then **one launch per ticket**: the app reads only the first
+    `-pair-ticket`. The phone must be unlocked (`Locked` launch errors).
+  - monitor: the apps keep the diagnostics monitor **by id**
+    (`idfon.diag.peer`), so a rekeyed monitor is re-set with `-diagpeer`.
+- **Which iPhone.** `IPHONE_NAME` (or `IPHONE_UDID`) in the gitignored `.env`
+  names the owner's phone. Other phones paired with this Mac belong to test
+  users, who install TestFlight builds; never pair agents to them unless the
+  owner asks.
+- **Names.** A contact is named by its home's `pairing.txt` (`--name`, from
+  `EVE_CONTACT_NAME`, else the instance). When a name changes, or an agent is
+  retired, pass the old name with `--drop` so no stale contact stays behind.
+- **A new key is a new endpoint id.** Every holder of the old card must re-add
+  it (the scripts cover the mac and one iPhone). Rekey the agency first: the
+  others admit its peer id and register with it at start.
+- **Homes** (`~/.idfon/<instance>`) come from three launchers: `pnpm agent`
+  (the agents in `agents/`), saved profiles (`instance.env`, e.g. agency
+  roster runs: `EVE_INSTANCE=<instance> AGENCY_URL=http://127.0.0.1:18777
+  scripts/llm-serve.sh`, see `agents/agency/roster.json`), and radio stations
+  (`scripts/radio-serve.sh <instance>`). A home with no `holder.key` mints a
+  strong one at its next start. Retired homes move to `~/.idfon/retired/`.
+
 ## Checks
 
 - Rust: `cargo check --workspace --all-targets`; `cargo test -p <crate>`.

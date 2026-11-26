@@ -180,10 +180,12 @@ it adds each agent to the mac daemon (replacing a contact of the same name),
 stores the mac's capability ticket, then adds the agents to one iPhone in a
 single launch and installs each iPhone ticket (one launch per ticket; the
 monitor last, with `-diagpeer`). Set `IPHONE_UDID` or `IPHONE_NAME` when more
-than one iPhone is paired. `pnpm agent:rekey <agent...|weak>` rotates
+than one iPhone is paired; `--drop NAME` removes a renamed or retired
+agent's old contact. `pnpm agent:rekey <agent...|weak>` rotates
 identity keys (stop, move `holder.key` aside, start, wait, pair); a rotated
 agent has a new endpoint id, so phones other than the paired one must re-add
-its card. The manual steps:
+its card. The rules behind both are in `AGENTS.md` ("Agent pairing"). The
+manual steps:
 
 ```sh
 # 1. contacts: adds the agent peer to the mac and iOS daemons
