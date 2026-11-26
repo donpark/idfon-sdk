@@ -12,6 +12,8 @@
     "pair": "bash ./scripts/pair-apple-channels.sh",
     "test-contacts": "bash ./scripts/test-contacts.sh",
     "agent": "bash ./scripts/agent.sh",
+    "agent:rekey": "bash ./scripts/agent-keys.sh rekey",
+    "agent:pair": "bash ./scripts/agent-keys.sh pair",
     "idfon": "node cli/idfon/bin/idfon.js",
     "all": "pnpm --filter \"./agents/*\" --filter \"./integrations/*\" --filter ./cli",
     "clean:build-cache": "rm -rf ../idfon-core/target ~/.cargo/registry/src"
