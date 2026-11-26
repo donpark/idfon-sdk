@@ -380,6 +380,21 @@ ok "peer remove" Q "$A" peer remove bob --json
 Q "$A" peer list --json | jq -e '.result.peers | length == 0' >/dev/null
 echo "PASS: peer remove leaves list empty"
 
+# --- blobs survive the provider's restart ------------------------------------
+# The daemon serves its blob store from start, not only after a put in this run,
+# so a ticket from before a restart still downloads (for others and for itself).
+T2=$(Q "$A" put "$work/payload.bin")
+ok "shutdown A (to restart it)" Q "$A" shutdown
+"$core_target/release/idfond" --socket "$A" --data-dir "$work/a" &
+pids="$pids $!"
+wait_ready "$A" A
+Q "$B" get "$T2" >"$work/after-restart.bin"
+cmp -s "$work/payload.bin" "$work/after-restart.bin"
+echo "PASS: a ticket from before the provider restarted still downloads"
+Q "$A" get "$T2" >"$work/after-restart-own.bin"
+cmp -s "$work/payload.bin" "$work/after-restart-own.bin"
+echo "PASS: the provider reads its own pre-restart ticket"
+
 # --- a stale autostarted daemon restarts, unless busy -----------------------
 # The CLI autostarts idfond for a socket nobody serves; once the daemon code
 # on disk changes (touching the dylib stands in for a rebuild), the next
