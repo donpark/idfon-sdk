@@ -7,7 +7,8 @@
 #   scripts/live-voice-serve.sh &                # background
 #
 # Requires the daemon on --socket (default /tmp/idfon/idfond.sock) and
-# AI_GATEWAY_API_KEY (GPT-Live voice sessions + gpt-6-luna delegation).
+# AI_GATEWAY_API_KEY (GPT-Live voice sessions + gpt-6-luna delegation), from
+# the environment or idfon-sdk/.env (scripts/lib/core.sh).
 #
 # GPT-Live is one voice backend (full-duplex model). This script serves a
 # voice agent; set EVE_IDFON_BIN/EVE_IDFON_PKG to run a different backend
