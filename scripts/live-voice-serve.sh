@@ -75,6 +75,12 @@ live_config_path="${EVE_LIVE_CONFIG:-$root/agents/$agent/live.json}"
 live_args=()
 if [ -n "${EVE_LIVE_CONFIG:-}" ] && [ ! -f "$live_config_path" ]; then
   echo "EVE_LIVE_CONFIG points at a missing live config: $live_config_path" >&2
+  [ -r "$instance_env" ] && echo "  (check the saved profile $instance_env)" >&2
+  exit 1
+fi
+if [ ! -d "$root/agents/$agent" ]; then
+  echo "no agent '$agent' under $root/agents" >&2
+  [ -r "$instance_env" ] && echo "  (EVE_AGENT may come from the saved profile $instance_env)" >&2
   exit 1
 fi
 if [ -f "$live_config_path" ]; then
@@ -139,6 +145,22 @@ case "$(cat "$key")" in
     echo "         Delete it to mint a strong key; callers must re-pair afterwards." >&2 ;;
 esac
 
+# One build at a time: `pnpm agent restart all` starts every agent at once,
+# and two `codesign`s of the shared dylib race ("No such file or directory").
+# The lock is a directory holding its owner's pid; a dead owner's lock is
+# taken over. Staleness is checked inside it, so later agents skip the build
+# an earlier one just did.
+build_lock="$core_target/.serve-build.lock"
+mkdir -p "$core_target"
+until mkdir "$build_lock" 2>/dev/null; do
+  lock_pid=$(cat "$build_lock/pid" 2>/dev/null || true)
+  if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+    rm -rf "$build_lock"
+    continue
+  fi
+  sleep 0.5
+done
+echo $$ > "$build_lock/pid"
 # Build when the holder is missing or any Rust source it is built from is
 # newer. Existence alone is not enough: a stale binary silently outlives a
 # source change (e.g. the voice-route gate), so check mtimes too.
@@ -155,12 +177,13 @@ elif [ -n "$(
   stale=1
 fi
 if [ "$stale" = 1 ] || [ "${FORCE_BUILD:-}" = 1 ]; then
-      core_cargo build --release -p iroh-c-ffi
+  core_cargo build --release -p iroh-c-ffi
   core_cargo build --release -p idfond && cargo build --release -p idfon-cli
   cargo build --release -p "$holder_pkg" ${holder_features:+--features "$holder_features"}
   codesign --force -s - "$core_target/release/libiroh_c_ffi.dylib" \
     "$core_target/release/$holder_bin" "$core_target/release/idfond"
 fi
+rm -rf "$build_lock"
 
 # The agent runs where it lives (`agents/<name>`); it is never copied into the
 # instance home. The home holds only the holder's identity, key, tickets and

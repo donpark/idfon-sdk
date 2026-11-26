@@ -10,11 +10,15 @@ name=${2:-}
 # turn and gone when the agent stops. Multi-model contacts (the agency roster)
 # are separate configured runs of an agent, owned by that feature — not
 # managed here.
+# `all` covers the agents with an Eve agent (`agents/<name>/agent/agent.ts`).
+# radio has only a serve script, which needs an instance argument, so it is
+# started directly (`scripts/radio-serve.sh <instance>`), never by `all`.
 available_agents() {
   local directory candidate
   for directory in "$root"/agents/*; do
     [[ -d "$directory" ]] || continue
     candidate=${directory##*/}
+    [[ -f "$directory/agent/agent.ts" ]] || continue
     serve_script "$candidate" >/dev/null && printf '%s ' "$candidate"
   done
   return 0
