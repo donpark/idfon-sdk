@@ -3140,6 +3140,7 @@ fn cmd_card_send(socket: &str, args: &CardSendArgs, json: bool, identity: Option
         capability_ticket: None,
         retries: None,
         delivery: None,
+        durable: false,
     };
     let response = call_plain(socket, &params, identity)?;
     if !response.ok {
@@ -3235,8 +3236,10 @@ fn cmd_ask(socket: &str, args: &AskArgs, json: bool, identity: Option<&str>) -> 
             .expect("clock before epoch")
             .as_nanos()
     );
+    // `kind: "ask"`: the phone shows it as a notification with Allow/Deny
+    // that answers from the lock screen (idfon-core docs/chat-envelopes.md).
     let mut body = json!({
-        "kind": "card",
+        "kind": "ask",
         "id": id,
         "title": args.question,
         "glyph": "checkmark.shield",
@@ -3257,6 +3260,9 @@ fn cmd_ask(socket: &str, args: &AskArgs, json: bool, identity: Option<&str>) -> 
                 capability_ticket: None,
                 retries: None,
                 delivery: None,
+                // An outbox item: a phone that is asleep gets it when it
+                // wakes (the doorbell below), not never.
+                durable: true,
             },
             identity,
         )
@@ -3266,21 +3272,35 @@ fn cmd_ask(socket: &str, args: &AskArgs, json: bool, identity: Option<&str>) -> 
     if !response.ok {
         return finish(response, json);
     }
+    let operation_id = result_str(&response, "operation_id");
+    let rang = ring_if_waiting(socket, identity, &target, &operation_id, json);
     if !json {
         eprintln!("asked {}; waiting up to {}...", target.name, ux::human_duration(args.timeout));
     }
     let answer = wait_answer(socket, identity, Some(&target), Some(&id), baseline, args.timeout)?;
     let allowed = answer.as_ref().is_some_and(|(_, answer)| answer.action == "allow");
     if answer.is_none() {
-        let mut expired = body.clone();
-        expired.as_object_mut().expect("card is an object").remove("actions");
-        expired["subtitle"] = json!(format!("Expired: no answer within {}", ux::human_duration(args.timeout)));
-        let _ = send(&expired, "expired");
+        // A card their phone never got is called off, so it can't turn up
+        // later asking for an answer nobody waits for; one it got is marked
+        // expired (the phone removes its notification).
+        let delivered = call_plain(socket, &rpc::OperationGet { operation_id: operation_id.clone(), timeout_ms: None }, identity)
+            .ok()
+            .and_then(|response| ux::ok_result(response).ok())
+            .is_some_and(|result| result["operation"]["status"] == "delivered");
+        let called_off = !delivered
+            && call_plain(socket, &rpc::OperationCancel { operation_id: operation_id.clone() }, identity)
+                .is_ok_and(|response| response.ok);
+        if !called_off {
+            let mut expired = body.clone();
+            expired.as_object_mut().expect("card is an object").remove("actions");
+            expired["subtitle"] = json!(format!("Expired: no answer within {}", ux::human_duration(args.timeout)));
+            let _ = send(&expired, "expired");
+        }
     }
     if json {
         println!(
             "{}",
-            json!({"allowed": allowed, "answered": answer.is_some(), "peer": target.name, "card": id})
+            json!({"allowed": allowed, "answered": answer.is_some(), "peer": target.name, "card": id, "rang": rang})
         );
     }
     match answer {
@@ -3297,6 +3317,53 @@ fn cmd_ask(socket: &str, args: &AskArgs, json: bool, identity: Option<&str>) -> 
             ux::human_duration(args.timeout)
         ))),
     }
+}
+
+/// Gives a send a few seconds to be delivered; if it is still waiting (their
+/// phone is asleep), rings their doorbell (`peer.doorbell`) so the phone wakes
+/// and comes online for it. Returns whether it rang. Never fails the command:
+/// without a doorbell the message still goes once they're online.
+fn ring_if_waiting(
+    socket: &str,
+    identity: Option<&str>,
+    target: &idfon_protocol::Peer,
+    operation_id: &str,
+    json: bool,
+) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while std::time::Instant::now() < deadline {
+        let status = call_plain(
+            socket,
+            &rpc::OperationGet { operation_id: operation_id.to_owned(), timeout_ms: None },
+            identity,
+        )
+        .ok()
+        .and_then(|response| ux::ok_result(response).ok())
+        .and_then(|result| result["operation"]["status"].as_str().map(str::to_owned));
+        if status.as_deref() == Some("delivered") {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let response = call_plain(socket, &rpc::PeerDoorbell { peer: target.id.clone() }, identity);
+    let note = match response {
+        Ok(response) => match ux::ok_result(response) {
+            Ok(result) if result["skipped"].is_string() => Some(format!("{}'s phone was rung a moment ago", target.name)),
+            Ok(result) if result["rung"].as_u64().unwrap_or(0) > 0 => {
+                if !json {
+                    eprintln!("{} isn't online; rang their phone", target.name);
+                }
+                return true;
+            }
+            Ok(_) => Some(format!("{} isn't online, and their phone has no push registered", target.name)),
+            Err(error) => Some(format!("{} isn't online, and their phone couldn't be rung: {error}", target.name)),
+        },
+        Err(error) => Some(format!("{} isn't online, and their phone couldn't be rung: {error}", target.name)),
+    };
+    if let (Some(note), false) = (note, json) {
+        eprintln!("{note}");
+    }
+    false
 }
 
 fn send_payload(
@@ -3352,6 +3419,7 @@ fn send_payload(
                 args.endpoint_ids.clone(),
                 args.device_class.clone(),
             )),
+            durable: false,
         };
         let response = call(socket, &params, identity, stdin_json)?;
         let Some((target, baseline)) = reply_from else {
