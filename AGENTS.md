@@ -29,6 +29,35 @@ This repo builds a sibling idfon-core checkout (default `../idfon-core`, or
 Use `core_cargo build -p idfond` / `-p iroh-c-ffi`; `cargo build -p idfon-cli`
 for this repo's crates. A core change that breaks this repo is fixed in core.
 
+## Security invariants
+
+From the security review of 2026-11-26 (idfon-home
+`docs/security-review-2026-11-26.md`). Peer text (messages, names, cards,
+fetched pages) reaches models through every agent and tool here, so treat any
+model-chosen value as attacker-chosen.
+
+- **A new CLI command is an MCP tool automatically.** `idfon mcp server`
+  generates its tools from the clap definitions. Before adding a command,
+  decide whether a prompt-injected model may run it: a command that
+  reconfigures the daemon, grants capabilities, serves or publishes local
+  files, writes to a caller-chosen path, or sends stored tokens goes in
+  `EXCLUDED` in `crates/idfon-cli/src/mcp_server.rs` (or waits for an
+  out-of-model approval). `rpc`, `config set`/`unset`, `provider` and `gateway`
+  are excluded, and `REFUSED_CAPABILITIES` keeps `mcp.transport` out of
+  `access grant`/`ticket`: together they once handed a peer `sh -c`. Tests:
+  `every_command_is_a_tool_except_the_excluded`,
+  `tools_cannot_grant_mcp_transport`; never delete an entry from their lists to
+  make a test pass.
+- **Agent tools take no host paths or free-form command lines from the model.**
+  Map model choices onto operator-owned values (an id from a list, a file
+  under the instance's content dir); a model-chosen path or URL is a file read
+  or SSRF for whoever messages the agent.
+- **Keys and secrets.** Generate keys and secrets with `openssl rand` under
+  `umask 077` and keep the files 0600; never `$RANDOM` (eleven holder keys
+  made that way were brute-forceable). Pass secrets by environment or file,
+  never on a command line (`ps` shows it to every local user), and never fall
+  back to a default secret.
+
 ## Checks
 
 - Rust: `cargo check --workspace --all-targets`; `cargo test -p <crate>`.
