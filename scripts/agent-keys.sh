@@ -3,6 +3,8 @@
 #
 #   pnpm agent:rekey <agent...|weak>   stop, move holder.key aside, start, then pair
 #   pnpm agent:pair  <agent...|all>    pair running agents (any ~/.idfon/<home>)
+#       [--drop NAME]...                 also remove contact NAME (a renamed or
+#                                        retired agent) from the mac and iPhone
 #
 # A new key is a new endpoint id, so every contact of a rekeyed agent must
 # re-pair. This pairs the mac app (its daemon on IDFON_SOCKET) and one iPhone
@@ -17,7 +19,7 @@ socket="${IDFON_SOCKET:-/tmp/idfon/idfond.sock}"
 action=${1:-}
 [ $# -gt 0 ] && shift
 
-usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 note() { printf '%s\n' "$*" >&2; }
 home_of() { printf '%s' "$HOME/.idfon/$1"; }
 running() { local pid; pid=$(cat "$(home_of "$1")/holder.pid" 2>/dev/null) && kill -0 "$pid" 2>/dev/null; }
@@ -65,13 +67,17 @@ rekey() {
 }
 
 pair() {
-  local agents=() a h contact pid name
-  if [ "${1:-}" = all ]; then
-    for h in "$HOME"/.idfon/*/holder.ticket; do a=$(basename "$(dirname "$h")"); running "$a" && agents+=("$a"); done
-  else
-    agents=("$@")
-  fi
-  [ ${#agents[@]} -gt 0 ] || usage
+  local agents=() drops=() a h contact pid name
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --drop) drops+=("${2:?--drop needs a contact name}"); shift 2 ;;
+      all)
+        for h in "$HOME"/.idfon/*/holder.ticket; do a=$(basename "$(dirname "$h")"); running "$a" && agents+=("$a"); done
+        shift ;;
+      *) agents+=("$1"); shift ;;
+    esac
+  done
+  [ ${#agents[@]} -gt 0 ] || [ ${#drops[@]} -gt 0 ] || usage
 
   # Only a daemon that is already listening: the CLI would otherwise spawn a blank one.
   local mac=""
@@ -90,8 +96,12 @@ pair() {
     fi
   fi
 
-  local ios_pairs=() tickets=() monitor=""
-  for a in "${agents[@]}"; do
+  local ios_pairs=() tickets=() monitor="" d want=0
+  for d in ${drops[@]+"${drops[@]}"}; do
+    [ -n "$mac" ] && { "$cli" --socket "$socket" peer remove "$d" >/dev/null 2>&1 && note "mac: dropped $d" || note "mac: no contact $d"; }
+    ios_pairs+=(-unpair "$d")
+  done
+  for a in ${agents[@]+"${agents[@]}"}; do
     h=$(home_of "$a")
     running "$a" && [ -s "$h/holder.ticket" ] || { note "$a is not running: skipped"; continue; }
     contact=$(head -1 "$h/holder.ticket")
@@ -106,6 +116,7 @@ pair() {
       note "mac: $name -> ${pid:0:12}…"
     fi
     ios_pairs+=(-pair "$contact" "$name")
+    want=$((want + 1))
     if [ -n "$ios_endpoint" ] && [ -s "$h/capability-ticket-$ios_endpoint.json" ]; then
       if [ "$a" = monitor ]; then monitor="$pid|$h/capability-ticket-$ios_endpoint.json"
       else tickets+=("$pid|$h/capability-ticket-$ios_endpoint.json"); fi
@@ -118,7 +129,6 @@ pair() {
   # One launch adds every contact (requests run in order, then -pair-exit);
   # the app reads one -pair-ticket per launch, so tickets go one at a time.
   # The monitor goes last with -diagpeer: the apps keep the monitor by id.
-  local want
   log=$(mktemp "${TMPDIR:-/tmp}/idfon-agent-pair.XXXXXX")
   trap 'rm -f "$log"' EXIT
   launch() { # <wait-for-pattern> <count> <args...>
@@ -127,8 +137,9 @@ pair() {
     xcrun devicectl device process launch --device "$device" --terminate-existing --console \
       com.idfon.ios -- "$@" >"$log" 2>&1 &
     launcher=$!
+    # count 0: wait for the app to exit (-pair-exit); unpairing logs nothing.
     for _ in $(seq 1 300); do
-      [ "$(grep -c "$pattern" "$log" || true)" -ge "$count" ] && break
+      [ "$count" -gt 0 ] && [ "$(grep -c "$pattern" "$log" || true)" -ge "$count" ] && break
       kill -0 "$launcher" 2>/dev/null || break
       sleep 0.2
     done
@@ -137,8 +148,8 @@ pair() {
     grep -E 'idfon (pair|ticket) failed' "$log" >&2 || true
     [ "$(grep -c "$pattern" "$log" || true)" -ge "$count" ] || { note "iPhone: expected $count × '$pattern' (is it unlocked?)"; tail -5 "$log" >&2; return 1; }
   }
-  want=$(( ${#ios_pairs[@]} / 3 ))
-  launch 'idfon paired:' "$want" -pair-exit "${ios_pairs[@]}" && note "iPhone: $want contacts"
+  launch 'idfon paired:' "$want" -pair-exit "${ios_pairs[@]}" \
+    && note "iPhone: $want contacts${drops[0]+, dropped ${#drops[@]}}"
   [ -n "$monitor" ] && tickets+=("$monitor")
   local entry stored=0
   for entry in ${tickets[@]+"${tickets[@]}"}; do
