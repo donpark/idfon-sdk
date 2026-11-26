@@ -74,8 +74,12 @@ The CLI is judged by how easily an agent uses it from the skill alone
   every command is one (`peer add` → `peer_add`, flags → arguments) and the
   MCP surface cannot fall behind the CLI. A call runs the same binary and
   returns its output; `mcp …`, `shutdown`, `skill` and `--follow` are left out
-  (they block or are the server itself). The skill is the server's
-  instructions. Code: `crates/idfon-cli/src/mcp_server.rs`.
+  (they block or are the server itself), and so are `rpc`, `config set`/`unset`,
+  `provider` and `gateway`, which reconfigure the daemon. Tool calls also
+  cannot grant or ticket `mcp.transport`. Peer text reaches the model through
+  the tools, so any call may be a prompt injection; these stay terminal-only.
+  The skill is the server's instructions. Code:
+  `crates/idfon-cli/src/mcp_server.rs`.
 - **Errors name the next command**: daemon errors print a `hint:` line
   (`hint_for` in `main.rs`), and timeouts say how to keep waiting
   (`idfon card wait … --card ID`, `idfon inbox --from bob --new`).

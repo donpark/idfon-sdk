@@ -4,8 +4,9 @@
 //! MCP surface never falls behind the CLI: `peer add` is the tool `peer_add`,
 //! its positionals and flags are the tool's arguments. A call runs this same
 //! binary with those arguments and returns what it printed (`json: true` adds
-//! `--json`). Consent stays with the daemon: a denied call comes back as a
-//! tool error with the daemon's message.
+//! `--json`). A denied call comes back as a tool error with the daemon's
+//! message. The daemon trusts every local caller, so the commands that
+//! reconfigure it are not tools (see [`EXCLUDED`]).
 //!
 //! Speaks MCP `2026-07-28` (`server/discover`, `_meta` on every request) and
 //! the older `initialize` handshake, for clients that still use it.
@@ -30,8 +31,26 @@ const ERR_UNSUPPORTED_VERSION: i64 = -32022;
 
 /// Commands that are not tools: this server and the relay (`mcp …`, which
 /// block), `shutdown` (other clients share the daemon), `skill` (it is the
-/// server's instructions already).
-const EXCLUDED: &[&[&str]] = &[&["mcp"], &["shutdown"], &["skill"]];
+/// server's instructions already), and the commands that reconfigure the
+/// daemon or go around the CLI. Peer text reaches the model through these
+/// tools, so a tool call may be a prompt injection: `rpc mcp.configure` or
+/// `config set mcp.command` plus an `mcp.transport` grant would hand a peer a
+/// shell, `config set ask.peer` would redirect approvals, `config set
+/// edge.url` would send the stored tokens elsewhere, and `provider start`
+/// serves a local folder to peers. The user runs these in a terminal.
+const EXCLUDED: &[&[&str]] = &[
+    &["mcp"],
+    &["shutdown"],
+    &["skill"],
+    &["rpc"],
+    &["config", "set"],
+    &["config", "unset"],
+    &["provider"],
+    &["gateway"],
+];
+/// Capabilities a tool call may not grant or put in a ticket: `mcp.transport`
+/// splices the holder to the configured local MCP command.
+const REFUSED_CAPABILITIES: &[&str] = &["mcp.transport"];
 /// Flags that would block forever under a tool call.
 const EXCLUDED_ARGS: &[&str] = &["follow"];
 
@@ -188,6 +207,23 @@ impl Tool {
                 return Err(format!("unknown argument {key:?} for {}", self.name));
             }
         }
+        if self.path.first().map(String::as_str) == Some("access") {
+            let named = ["capabilities", "capability"]
+                .iter()
+                .filter_map(|key| arguments.get(*key))
+                .flat_map(|value| match value {
+                    Value::Array(items) => items.clone(),
+                    other => vec![other.clone()],
+                });
+            for value in named {
+                if let Some(capability) = value.as_str().filter(|text| REFUSED_CAPABILITIES.contains(&text.trim())) {
+                    return Err(format!(
+                        "{capability} cannot be granted from a tool call; the user grants it in a terminal \
+                         (`idfon access grant <peer> {capability}`)"
+                    ));
+                }
+            }
+        }
         let mut argv = Vec::new();
         if arguments.get("json").and_then(Value::as_bool) == Some(true) {
             argv.push("--json".to_owned());
@@ -246,7 +282,9 @@ fn instructions() -> String {
     format!(
         "Each tool is an idfon CLI command: `idfon peer add carol.vcf` is the tool `peer_add` with \
          `{{\"input\": \"carol.vcf\"}}`; flags are arguments of the same name. The guide below uses \
-         CLI syntax.\n\n{}",
+         CLI syntax. `rpc`, `config set`/`unset`, `provider` and `gateway` are not tools, and no \
+         tool grants `mcp.transport`: they reconfigure the daemon, so ask the user to run them in \
+         a terminal.\n\n{}",
         crate::SKILL
     )
 }
@@ -437,12 +475,26 @@ mod tests {
     #[test]
     fn every_command_is_a_tool_except_the_excluded() {
         let names: Vec<String> = tools().into_iter().map(|tool| tool.name).collect();
-        for name in ["send", "inbox", "peer_add", "card_send", "card_wait", "request_accept", "ask", "room_call_join", "access_grant", "rpc"] {
+        for name in ["send", "inbox", "peer_add", "card_send", "card_wait", "request_accept", "ask", "room_call_join", "access_grant", "config_show", "config_path"] {
             assert!(names.contains(&name.to_owned()), "{name} missing from {names:?}");
         }
-        for name in ["mcp_server", "mcp_listen", "shutdown", "skill"] {
+        for name in [
+            "mcp_server", "mcp_listen", "mcp_configure", "shutdown", "skill", "rpc", "config_set", "config_unset",
+            "provider_start", "provider_stop", "gateway_start", "gateway_stop",
+        ] {
             assert!(!names.contains(&name.to_owned()), "{name} should not be a tool");
         }
+    }
+
+    #[test]
+    fn tools_cannot_grant_mcp_transport() {
+        let grant = find("access_grant");
+        assert!(grant.argv(&json!({"peer": "bob", "capabilities": ["message.send", "mcp.transport"]})).is_err());
+        assert!(grant.argv(&json!({"peer": "bob", "capabilities": [" mcp.transport "]})).is_err());
+        assert!(grant.argv(&json!({"peer": "bob", "capabilities": ["message.send"]})).is_ok());
+        let ticket = find("access_ticket");
+        assert!(ticket.argv(&json!({"peer": "bob", "capability": "mcp.transport"})).is_err());
+        assert!(ticket.argv(&json!({"peer": "bob", "capability": "message.receive"})).is_ok());
     }
 
     #[test]

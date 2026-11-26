@@ -154,8 +154,10 @@ connections. This area is experimental. See
 [MCP transport](docs/mcp-transport.md).
 
 To give an agent idfon itself as tools, run `idfon mcp server` (stdio): every
-CLI command is a tool (`peer add` is `peer_add`), and the skill
-(`idfon skill`) is the server's instructions:
+CLI command is a tool (`peer add` is `peer_add`), except those that
+reconfigure the daemon (`rpc`, `config set`/`unset`, `provider`, `gateway`,
+and granting `mcp.transport`), and the skill (`idfon skill`) is the server's
+instructions:
 
 ```json
 { "mcpServers": { "idfon": { "command": "idfon", "args": ["mcp", "server"] } } }
