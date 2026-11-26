@@ -7,7 +7,8 @@
 #   scripts/live-voice-serve.sh &                # background
 #
 # Requires the daemon on --socket (default /tmp/idfon/idfond.sock) and
-# AI_GATEWAY_API_KEY (GPT-Live voice sessions + gpt-6-luna delegation).
+# AI_GATEWAY_API_KEY (GPT-Live voice sessions + gpt-6-luna delegation), from
+# the environment or idfon-sdk/.env (scripts/lib/core.sh).
 #
 # GPT-Live is one voice backend (full-duplex model). This script serves a
 # voice agent; set EVE_IDFON_BIN/EVE_IDFON_PKG to run a different backend
@@ -75,6 +76,12 @@ live_config_path="${EVE_LIVE_CONFIG:-$root/agents/$agent/live.json}"
 live_args=()
 if [ -n "${EVE_LIVE_CONFIG:-}" ] && [ ! -f "$live_config_path" ]; then
   echo "EVE_LIVE_CONFIG points at a missing live config: $live_config_path" >&2
+  [ -r "$instance_env" ] && echo "  (check the saved profile $instance_env)" >&2
+  exit 1
+fi
+if [ ! -d "$root/agents/$agent" ]; then
+  echo "no agent '$agent' under $root/agents" >&2
+  [ -r "$instance_env" ] && echo "  (EVE_AGENT may come from the saved profile $instance_env)" >&2
   exit 1
 fi
 if [ -f "$live_config_path" ]; then
@@ -83,12 +90,32 @@ fi
 # Pin the holder's UDP port so its endpoint address survives restarts and the
 # apps do not need re-pairing. Deterministic per agent, persisted, overridable.
 port_file="$home/endpoint-port"
+# True when another instance under ~/.idfon has pinned port $1.
+pinned_elsewhere() {
+  local file
+  for file in "$HOME"/.idfon/*/endpoint-port; do
+    [ "$file" = "$port_file" ] && continue
+    [ -s "$file" ] && [ "$(cat "$file")" = "$1" ] && return 0
+  done
+  return 1
+}
 if [ -n "${EVE_VOICE_PORT:-}" ]; then
   endpoint_port="$EVE_VOICE_PORT"
 elif [ -s "$port_file" ]; then
   endpoint_port=$(cat "$port_file")
 else
   endpoint_port=$((58000 + $(printf '%s' "$instance" | cksum | awk '{print $1}') % 1000))
+  # Names can hash to the same port (monitor and radio-world both give 58330);
+  # take the next one no other instance has pinned.
+  probes=0
+  while pinned_elsewhere "$endpoint_port" && [ "$probes" -lt 1000 ]; do
+    endpoint_port=$((58000 + (endpoint_port - 58000 + 1) % 1000))
+    probes=$((probes + 1))
+  done
+fi
+if pinned_elsewhere "$endpoint_port"; then
+  echo "warning: endpoint port $endpoint_port is also pinned by another instance; whichever starts second" >&2
+  echo "         gets a random port. Delete $port_file to pick a free one." >&2
 fi
 printf '%s' "$endpoint_port" > "$port_file" 2>/dev/null || true
 integration="$root/integrations/eve-idfon"
@@ -139,6 +166,22 @@ case "$(cat "$key")" in
     echo "         Delete it to mint a strong key; callers must re-pair afterwards." >&2 ;;
 esac
 
+# One build at a time: `pnpm agent restart all` starts every agent at once,
+# and two `codesign`s of the shared dylib race ("No such file or directory").
+# The lock is a directory holding its owner's pid; a dead owner's lock is
+# taken over. Staleness is checked inside it, so later agents skip the build
+# an earlier one just did.
+build_lock="$core_target/.serve-build.lock"
+mkdir -p "$core_target"
+until mkdir "$build_lock" 2>/dev/null; do
+  lock_pid=$(cat "$build_lock/pid" 2>/dev/null || true)
+  if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
+    rm -rf "$build_lock"
+    continue
+  fi
+  sleep 0.5
+done
+echo $$ > "$build_lock/pid"
 # Build when the holder is missing or any Rust source it is built from is
 # newer. Existence alone is not enough: a stale binary silently outlives a
 # source change (e.g. the voice-route gate), so check mtimes too.
@@ -155,12 +198,13 @@ elif [ -n "$(
   stale=1
 fi
 if [ "$stale" = 1 ] || [ "${FORCE_BUILD:-}" = 1 ]; then
-      core_cargo build --release -p iroh-c-ffi
+  core_cargo build --release -p iroh-c-ffi
   core_cargo build --release -p idfond && cargo build --release -p idfon-cli
   cargo build --release -p "$holder_pkg" ${holder_features:+--features "$holder_features"}
   codesign --force -s - "$core_target/release/libiroh_c_ffi.dylib" \
     "$core_target/release/$holder_bin" "$core_target/release/idfond"
 fi
+rm -rf "$build_lock"
 
 # The agent runs where it lives (`agents/<name>`); it is never copied into the
 # instance home. The home holds only the holder's identity, key, tickets and

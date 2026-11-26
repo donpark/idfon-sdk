@@ -28,7 +28,8 @@ extra work, such as the agency's provisioner.
 
 `serve.env` holds `KEY=VALUE` defaults, applied only when the variable is
 unset. An empty `EVE_IDFON_MODEL=` keeps the agent's own model (e.g. a mock).
-Only a gateway model id (`provider/model`) needs `AI_GATEWAY_API_KEY`.
+Only a gateway model id (`provider/model`) needs `AI_GATEWAY_API_KEY`. The
+scripts read it from `idfon-sdk/.env` (gitignored) when it isn't already set.
 
 ## Run data
 
