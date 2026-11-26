@@ -11,4 +11,6 @@ import { respond } from "./lib/respond";
 export default defineAgent({
   model: mockModel(respond),
   modelContextWindowTokens: 32_768,
+  // Delete run payloads when a run ends, under `eve dev` too (agents/README.md, "Run data").
+  experimental: { workflow: { retention: 0 } },
 });

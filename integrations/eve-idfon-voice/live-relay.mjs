@@ -581,7 +581,7 @@ async function handleTurn(speech, peerId, trace, turnEndMs) {
     const sttMs = Date.now() - started;
     const captureMs = Math.round((speech.length / 2 / RATE) * 1000);
     log.info("heard", {
-      transcript,
+      transcript_chars: transcript.length,
       stt_ms: sttMs,
       capture_ms: captureMs,
     });
@@ -619,9 +619,9 @@ async function handleTurn(speech, peerId, trace, turnEndMs) {
       return;
     }
     if (!reply) return;
-    log.info("reply", { reply, peer_id: peerId, trace, reply_ms: replyMs });
-    const spoken = spokenText(reply);
     const turnId = `${callId}-t${turnSeq++}`;
+    log.info("reply", { reply_chars: reply.length, turn_id: turnId, peer_id: peerId, trace, reply_ms: replyMs });
+    const spoken = spokenText(reply);
     sendTranscript(peerId, "agent", spoken, true, turnId).catch((error) => log.warn("transcript send failed", { error: String(error) }));
     const playStart = Date.now();
     const played = await speak(reply, peerId, "reply");

@@ -16,4 +16,6 @@ export default defineAgent({
       return ping ? `BENCH-PONG ${ping[1]}` : `bench peer ready: ${lastUserMessage}`;
     }),
   ...(selected ? {} : { modelContextWindowTokens: 32_768 }),
+  // Delete run payloads when a run ends, under `eve dev` too (agents/README.md, "Run data").
+  experimental: { workflow: { retention: 0 } },
 });

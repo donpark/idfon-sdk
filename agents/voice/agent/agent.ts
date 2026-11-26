@@ -6,4 +6,8 @@ import { defineAgent } from "eve";
 // turn — or relays it to a wrapped agent. Reached by endpoint id + ticket.
 const model = process.env.EVE_IDFON_MODEL || "openai/gpt-6-luna";
 
-export default defineAgent({ model });
+export default defineAgent({
+  model,
+  // Delete run payloads when a run ends, under `eve dev` too (agents/README.md, "Run data").
+  experimental: { workflow: { retention: 0 } },
+});

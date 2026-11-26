@@ -12,4 +12,6 @@ export default defineAgent({
   ),
   // The mock has no gateway metadata; compaction needs a window size.
   modelContextWindowTokens: 32_768,
+  // Delete run payloads when a run ends, under `eve dev` too (agents/README.md, "Run data").
+  experimental: { workflow: { retention: 0 } },
 });

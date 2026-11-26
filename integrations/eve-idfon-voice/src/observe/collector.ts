@@ -1,6 +1,7 @@
 // Builds a CallRecord (src/observe/schema.ts) from raw turns and playback-
 // truncation marks. Pure: every input is call-relative ms, `build()` derives
-// the habit stats and joins the raw friction events. The Rust
+// the habit stats and joins the raw friction events. Turn text stays in
+// memory: the built record carries each turn's size, not its words. The Rust
 // `TurnBridge::record_playback_truncated` is the daemon-side analog of
 // `recordPlaybackTruncated`.
 
@@ -13,7 +14,6 @@ export const EARLY_HANGUP_MS = 30_000;
 const REASK_MIN_SIMILARITY = 0.6;
 const REASK_MIN_GAP = 2; // "~3 turns apart": one to two exchanges earlier
 const REASK_MAX_GAP = 4;
-const EXCERPT_CHARS = 160;
 
 const HOW_NULLS = { emotion: null, sarcasm: null, delivery: null };
 
@@ -47,7 +47,7 @@ export interface TurnInput {
 export class CallRecorder {
   readonly callId: string;
   readonly startedAt: Date;
-  #turns: TurnEntry[] = [];
+  #turns: TurnInput[] = [];
   #truncations: number[] = [];
   #bcdActive = false;
   #bcdEvents: BcdEvent[] = [];
@@ -58,7 +58,7 @@ export class CallRecorder {
   }
 
   addTurn(input: TurnInput): void {
-    this.#turns.push({ ...input, how: { ...HOW_NULLS } });
+    this.#turns.push({ ...input });
   }
 
   /** Playback was cut short by a barge-in at `atMs` (call-relative). */
@@ -77,13 +77,13 @@ export class CallRecorder {
   }
 
   build(endedAt: Date = new Date()): CallRecord {
-    const turns = this.#turns.map((t) => ({ ...t }));
+    const turns = this.#turns;
     const userTurns = turns.filter((t) => t.role === "user");
     const agentTurns = turns.filter((t) => t.role === "agent");
     const backchannels = userTurns.filter((t) => isBackchannel(t.text)).length;
     const repairs = userTurns.filter((t) => REPAIR_RE.test(t.text)).length;
     return {
-      schema: "eve-idfon-voice.call-observe/1",
+      schema: "eve-idfon-voice.call-observe/2",
       call_id: this.callId,
       started_at: this.startedAt.toISOString(),
       duration_ms: endedAt.getTime() - this.startedAt.getTime(),
@@ -110,16 +110,25 @@ export class CallRecorder {
             events: [...this.#bcdEvents],
           }
         : null,
-      turns,
+      turns: turns.map(
+        (t): TurnEntry => ({
+          role: t.role,
+          started_ms: t.started_ms,
+          duration_ms: t.duration_ms,
+          text_chars: t.text.length,
+          words: tokens(t.text).length,
+          how: { ...HOW_NULLS },
+        }),
+      ),
     };
   }
 
-  #friction(turns: TurnEntry[], durationMs: number): FrictionEvent[] {
+  #friction(turns: TurnInput[], durationMs: number): FrictionEvent[] {
     const out: FrictionEvent[] = [];
     // Repair initiators.
     for (let i = 0; i < turns.length; i++) {
       if (turns[i].role === "user" && REPAIR_RE.test(turns[i].text)) {
-        out.push({ type: "repair", turn_index: i, excerpt: excerpt(turns[i].text) });
+        out.push({ type: "repair", turn_index: i });
       }
     }
     // Re-asks/rephrases: a user turn close in wording to a user turn ~3 turns
@@ -134,7 +143,7 @@ export class CallRecorder {
         if (reasked.has(userIndexed[b][1])) continue;
         if (similarity(userIndexed[a][0].text, userIndexed[b][0].text) >= REASK_MIN_SIMILARITY) {
           reasked.add(userIndexed[b][1]);
-          out.push({ type: "reask", turn_index: userIndexed[b][1], excerpt: excerpt(userIndexed[b][0].text) });
+          out.push({ type: "reask", turn_index: userIndexed[b][1] });
           break; // one earlier twin per turn
         }
       }
@@ -146,11 +155,11 @@ export class CallRecorder {
       const idx = turns.findIndex((t, i) => t.role === "user" && t.started_ms >= at && !joined.has(i));
       if (idx >= 0) {
         joined.add(idx);
-        out.push({ type: "barge_restart", turn_index: idx, excerpt: excerpt(turns[idx].text) });
+        out.push({ type: "barge_restart", turn_index: idx });
       }
     }
     if (turns.length < EARLY_HANGUP_TURNS || durationMs < EARLY_HANGUP_MS) {
-      out.push({ type: "early_hangup", turn_index: Math.max(0, turns.length - 1), excerpt: "" });
+      out.push({ type: "early_hangup", turn_index: Math.max(0, turns.length - 1) });
     }
     return out.sort((x, y) => x.turn_index - y.turn_index || x.type.localeCompare(y.type));
   }
@@ -171,11 +180,6 @@ function similarity(a: string, b: string): number {
   let shared = 0;
   for (const t of sa) if (sb.has(t)) shared++;
   return shared / (sa.size + sb.size - shared || 1);
-}
-
-function excerpt(text: string): string {
-  const t = text.trim();
-  return t.length > EXCERPT_CHARS ? t.slice(0, EXCERPT_CHARS - 1) + "…" : t;
 }
 
 /** Preamble length v1 = the whole first sentence: "answer-bearing sentence"
