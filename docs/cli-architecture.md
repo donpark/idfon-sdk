@@ -87,10 +87,16 @@ The CLI is judged by how easily an agent uses it from the skill alone
   command shuts it down and starts a fresh one, unless another client is
   connected or a broadcast runs. The mac app's daemon and a daemon a script
   started are never touched.
-- **`idfon ask`** puts an Allow/Deny card on a contact's phone and exits 0 only
-  on Allow; deny, error or no answer within `--timeout` (default 5m) is
-  non-zero, and an unanswered card is marked expired. Only that contact's
-  answer to that card counts. The decider is `--to PEER` or the `ask.peer`
+- **`idfon ask`** puts an Allow/Deny card (`kind: "ask"`) on a contact's phone
+  and exits 0 only on Allow; deny, error or no answer within `--timeout`
+  (default 5m) is non-zero. Only that contact's answer to that card counts.
+  The card is durable; if it isn't delivered within 3 s (the phone is asleep),
+  the daemon rings the contact's doorbell (`peer.doorbell`, the existing "New
+  message" push), and the woken iPhone shows the ask as a lock-screen
+  notification whose Allow (after Face ID) and Deny answer without opening the
+  app. On timeout, a card the phone never got is called off (operation
+  cancel); one it got is replaced by an expired card, which removes the
+  notification. The decider is `--to PEER` or the `ask.peer`
   setting, and must be another identity (typically the idfon app on your
   phone, added as a contact of the identity the agent uses).
 

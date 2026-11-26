@@ -45,8 +45,9 @@ idfon card send bob "Book a table" --field name=Name --action book=Book --wait
                                     # fields: what bob types comes back as name=...
 idfon card send bob "Pick one" --sheet ...   # during a call, opens over bob's screen
 idfon card wait bob --card compose  # bob picked one of your + actions (idfon.json)
-idfon ask "Delete build/?" --to don # Allow/Deny card on don's phone; exits 0 only if
-                                    #   don taps Allow (no answer in 5m counts as no)
+idfon ask "Delete build/?" --to don # Allow/Deny on don's phone, even locked (it rings
+                                    #   a sleeping phone); exits 0 only if don taps
+                                    #   Allow (no answer in 5m counts as no)
 
 idfon access check bob [CAPABILITY] # may you message bob? (default message.send)
 idfon access grant bob              # allow sending to and receiving from bob

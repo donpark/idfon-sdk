@@ -244,6 +244,9 @@ answer_card() { # card id, action
 Q "$A" ask "Delete old.log?" --to bob --detail "rm old.log" --timeout 30s >"$work/ask1.out" 2>/dev/null &
 ask_pid=$!
 CARD=$(await_ask "")
+Q "$B" inbox --json | jq -r 'select(.data.text | startswith("IDFON-UI/1")) | .data.text' \
+  | sed -n 's/^payload=//p' | tail -1 | base64 --decode | jq -e '.kind == "ask" and ([.actions[].id] == ["allow", "deny"])' >/dev/null
+echo "PASS: ask sends an ask card with allow and deny"
 answer_card "$CARD" allow
 wait "$ask_pid"
 grep -q 'allowed by bob' "$work/ask1.out"
@@ -374,6 +377,68 @@ echo "PASS: a blocked sender is refused"
 Q "$B" request list --json | jq -e '.result.requests | length == 0' >/dev/null
 echo "PASS: no request from a blocked sender"
 ok "request unblock" sh -c "\"$NUF\" --socket '$B' request unblock '$D_PID' | grep -qx unblocked"
+
+# --- doorbell: an ask to a sleeping phone rings it ---------------------------
+# G plays the phone: it gives F its doorbell key (IDFON-DOORBELL/1) and goes
+# offline. F's daemon points at a stand-in edge; `ask` waits a moment, then
+# rings G's doorbell (peer.doorbell): one POST to /<G>/_push/doorbell with
+# F's own statement and a sealed name.
+cat >"$work/edge.py" <<'PY'
+import http.server, json, sys
+log, portfile = sys.argv[1], sys.argv[2]
+class Edge(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers.get("content-length", 0)))
+        with open(log, "a") as f:
+            f.write(json.dumps({"path": self.path, "ticket": self.headers.get("x-idfon-ticket", ""),
+                                "body": json.loads(body or b"{}")}) + "\n")
+        reply = json.dumps({"rung": 1}).encode()
+        self.send_response(200); self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(reply))); self.end_headers(); self.wfile.write(reply)
+    def log_message(self, *args): pass
+server = http.server.HTTPServer(("127.0.0.1", 0), Edge)
+open(portfile, "w").write(str(server.server_address[1]))
+server.serve_forever()
+PY
+python3 "$work/edge.py" "$work/edge.log" "$work/edge.port" &
+pids="$pids $!"
+for _ in $(seq 1 50); do [ -s "$work/edge.port" ] && break; sleep 0.1; done
+F="$work/f/idfond.sock"
+G="$work/g/idfond.sock"
+mkdir -p "$work/f"
+IDFON_EDGE_URL="http://127.0.0.1:$(cat "$work/edge.port")" "$core_target/release/idfond" --socket "$F" --data-dir "$work/f" &
+pids="$pids $!"
+wait_ready "$F" f
+start_daemon g
+F_EP=$(Q "$F" status --json | jq -r .result.identity.endpoint_id)
+F_PID=$(Q "$F" status --json | jq -r .result.identity.public_key)
+F_ADDR=$(Q "$F" status --json | jq -r '.result.ticket | implode')
+G_EP=$(Q "$G" status --json | jq -r .result.identity.endpoint_id)
+G_PID=$(Q "$G" status --json | jq -r .result.identity.public_key)
+G_ADDR=$(Q "$G" status --json | jq -r '.result.ticket | implode')
+Q "$F" peer add "$G_PID" --name phone --endpoint-id "$G_EP" --endpoint-addr "$G_ADDR" --json >/dev/null
+Q "$G" peer add "$F_PID" --name agent --endpoint-id "$F_EP" --endpoint-addr "$F_ADDR" --json >/dev/null
+Q "$F" access allow "$G_PID" message.send message.receive --json >/dev/null
+Q "$G" access allow "$F_PID" message.send message.receive --json >/dev/null
+DOORBELL_KEY=$(head -c 32 /dev/urandom | base64)
+Q "$G" send agent --text "$(printf 'IDFON-DOORBELL/1\nkey=%s' "$DOORBELL_KEY")" --json >/dev/null
+kept=""
+for _ in $(seq 1 50); do
+  kept=$(Q "$F" peer show phone --json | jq -r '.result.peer.doorbell_key // empty')
+  [ -n "$kept" ] && break
+  sleep 0.1
+done
+[ "$kept" = "$DOORBELL_KEY" ] || { echo "FAIL: doorbell key not kept on the contact" >&2; exit 1; }
+echo "PASS: a contact's doorbell key is kept"
+ok "phone goes offline" Q "$G" shutdown
+if Q "$F" ask "Deploy now?" --to phone --timeout 6s --json >"$work/ask-asleep.json" 2>/dev/null; then
+  echo "FAIL: an unanswered ask exited 0" >&2; exit 1
+fi
+jq -e '.rang == true and .answered == false' "$work/ask-asleep.json" >/dev/null
+jq -e --arg p "/$G_PID/_push/doorbell" --arg c "$F_PID" \
+  'select(.path == $p) | (.ticket | length > 0) and .body.caller_id == $c and (.body.sealed | length > 44)' "$work/edge.log" >/dev/null
+echo "PASS: an ask to a sleeping phone rings its doorbell"
+ok "shutdown F" Q "$F" shutdown
 
 # --- peer remove --------------------------------------------------------------
 ok "peer remove" Q "$A" peer remove bob --json
