@@ -381,13 +381,15 @@ Providers that are only *almost* compatible are handled by a profile too;
 genuinely bespoke APIs get a small adapter behind the same seam. Today:
 `openai-compatible` (the long tail), `deepgram` (STT + TTS), `elevenlabs`
 (TTS), and `cartesia` (TTS); mix any STT with any TTS via a split `stt`/`tts`
-engine block. Streaming where it matters: ElevenLabs TTS streams by default
-(chunked `/stream`, audio pushed as it synthesizes); Deepgram STT can stream
+engine block. Streaming where it matters: Deepgram Aura TTS (and ElevenLabs,
+no longer used) streams audio as it synthesizes; Deepgram STT can stream
 via `"stream": true` (WebSocket partials, lower first-final latency) while
 batch REST stays the default.
 
-**Default (`agents/voice/live.json`)** is the streaming split — Deepgram
-WebSocket STT (`nova-3`, `stream: true`) + ElevenLabs `/stream` TTS. Four
+**The streaming split (`agents/voice/providers/deepgram-streaming.json`)** —
+Deepgram WebSocket STT (`nova-3`, `stream: true`) + Deepgram Aura TTS
+(`aura-2-thalia-en`); the server-cascade relay (`scripts/live-voice-serve.sh`)
+uses the same pair. ElevenLabs was dropped 2026-11-26. Four
 cascade behaviours are worth knowing:
 
 - **One reply, one synthesis.** TTS is synthesized for the **whole**
@@ -424,7 +426,7 @@ The generic voice agent plus a provider file is the whole flow:
 
 ```sh
 scripts/voice-serve.sh agents/voice/providers/groq.json
-scripts/voice-serve.sh agents/voice/providers/deepgram-elevenlabs.json
+scripts/voice-serve.sh agents/voice/providers/deepgram-streaming.json
 scripts/voice-serve.sh            # default live.json (AI Gateway env)
 ```
 
@@ -607,7 +609,7 @@ The app-side halves live in `HybridVoice` (`ios/Idfon/LiveCall.swift`,
 on-device ASR (sending text controls) or speaks the agent transcripts.
 
 Ready-made configs: `agents/voice/providers/hybrid-stt-client.json` (caller
-STT + holder ElevenLabs TTS) and `hybrid-tts-client.json` (holder Deepgram STT +
+STT + holder Deepgram TTS) and `hybrid-tts-client.json` (holder Deepgram STT +
 caller TTS). An in-process variant is also available: the `apple` provider
 (`idfon-voice/apple_ffi`) selects the on-device engine where the app registered
 `idfon_voice_set_bindings`, e.g. `{ "stt": { "provider": "apple" }, "tts": { … } }`.
