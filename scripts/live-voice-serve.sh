@@ -361,7 +361,7 @@ if [ "$(jq -r '.backend // empty' "$live_config_path" 2>/dev/null)" = "relay" ];
       || cat "$home/capability-ticket.json" 2>/dev/null || echo null)
     engine=$(jq -nc --arg pid "$self_id" --arg ticket "$wrap_ticket" '{
       stt: {provider: "deepgram", api_key_env: "DEEPGRAM_API_KEY"},
-      tts: {provider: "elevenlabs", voice: "EXAVITQu4vr4xnSDxMaL", api_key_env: "ELEVENLABS_API_KEY"},
+      tts: {provider: "deepgram", voice: "aura-2-thalia-en", api_key_env: "DEEPGRAM_API_KEY"},
       wrap: {peer_id: $pid, endpoint_id: $pid, ticket: $ticket, local: true}}')
     # The relay exits when the bridge's SSE stream terminates (a caller
     # hangup used to kill it: `TypeError: terminated`, 2026-11-07), and an

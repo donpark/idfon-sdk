@@ -4,6 +4,6 @@
   "voice_route": { "mode": "server-cascade", "audio": "pcm24k" },
   "engine": {
     "stt": { "provider": "deepgram", "model": "nova-3", "stream": true },
-    "tts": { "provider": "deepgram", "voice": "aura-asteria-en" }
+    "tts": { "provider": "deepgram", "voice": "aura-2-thalia-en" }
   }
 }

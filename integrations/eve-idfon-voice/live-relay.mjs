@@ -208,8 +208,35 @@ async function elevenLabsStream(cfg, text, signal) {
   return response.body.getReader();
 }
 
-async function elevenLabsPcm(cfg, text, signal) {
-  const reader = await elevenLabsStream(cfg, text, signal);
+/// Deepgram Aura TTS: raw linear16 at RATE, streamed as it synthesizes.
+async function deepgramStream(cfg, text, signal) {
+  const host = (cfg.base_url || "https://api.deepgram.com").replace(/\/$/, "");
+  const params = new URLSearchParams({
+    model: cfg.voice || "aura-2-thalia-en",
+    encoding: "linear16", sample_rate: String(RATE), container: "none",
+  });
+  const response = await fetch(`${host}/v1/speak?${params}`, {
+    method: "POST",
+    headers: {
+      authorization: `Token ${apiKey({ ...cfg, api_key_env: cfg.api_key_env || "DEEPGRAM_API_KEY" })}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!response.ok || !response.body) throw new Error(`tts HTTP ${response.status}: ${await response.text()}`);
+  return response.body.getReader();
+}
+
+/// The providers whose PCM streams (cached cues + paced streamed replies);
+/// anything else synthesizes the whole reply through `synthesize`.
+const STREAMING_TTS = { deepgram: deepgramStream, elevenlabs: elevenLabsStream };
+function streamingTts(cfg) {
+  return STREAMING_TTS[cfg.provider || "openai-compatible"] ?? null;
+}
+
+async function streamPcm(cfg, text, signal) {
+  const reader = await streamingTts(cfg)(cfg, text, signal);
   const parts = [];
   let carry = Buffer.alloc(0);
   for (;;) {
@@ -229,7 +256,7 @@ async function elevenLabsPcm(cfg, text, signal) {
 /// A short cue (greeting/filler/backchannel) is synthesized whole, normalized
 /// and edge-faded once; the result is cached for this voice/model.
 async function cuePcm(cfg, text, signal) {
-  const pcm = await elevenLabsPcm(cfg, text, signal);
+  const pcm = await streamPcm(cfg, text, signal);
   if (!pcm) return null;
   normalizePcm(pcm);
   fadeEdges(pcm);
@@ -239,8 +266,8 @@ async function cuePcm(cfg, text, signal) {
 /// The long reply streams: pace chunks for barge cancellability, estimate the
 /// level from the first 200 ms and apply it to the whole utterance, fade the
 /// first and last chunk.
-async function speakElevenLabs(cfg, text, peerId, signal) {
-  const reader = await elevenLabsStream(cfg, text, signal);
+async function speakStreamed(cfg, text, peerId, signal) {
+  const reader = await streamingTts(cfg)(cfg, text, signal);
   let carry = Buffer.alloc(0);
   let clock = 0;
   let audioMs = 0;
@@ -331,7 +358,7 @@ async function doSpeak(text, peerId, kind) {
   try {
     const cfg = engine.tts || {};
     const spoken = spokenText(text);
-    if ((cfg.provider || "openai-compatible") === "elevenlabs") {
+    if (streamingTts(cfg)) {
       if (isCue(kind)) {
         let pcm = cueCache.get(text);
         if (!pcm) {
@@ -340,7 +367,7 @@ async function doSpeak(text, peerId, kind) {
         }
         if (pcm && !controller.signal.aborted) await play(peerId, pcm);
       } else {
-        await speakElevenLabs(cfg, spoken, peerId, controller.signal);
+        await speakStreamed(cfg, spoken, peerId, controller.signal);
       }
     } else if (!controller.signal.aborted) {
       const pcm = await synthesize(spoken);
@@ -488,7 +515,7 @@ function isCue(kind) {
 }
 async function primeCues() {
   const cfg = engine.tts || {};
-  if ((cfg.provider || "openai-compatible") !== "elevenlabs") return;
+  if (!streamingTts(cfg)) return;
   const texts = [...new Set([GREETING_TEXT, ...FILLER_TEXTS, ...BC_POOL])];
   for (const text of texts) {
     if (cueCache.has(text)) continue;
@@ -743,7 +770,7 @@ async function main() {
       engine: { stt: engine.stt?.provider ?? "?", tts: engine.tts?.provider ?? "?" },
       options: [
         { id: `server:${engine.stt?.provider ?? "?"}`, kind: "stt", label: `Deepgram ${engine.stt?.stt_model || "nova-3"}`, side: "server" },
-        { id: `server:${engine.tts?.provider ?? "?"}`, kind: "tts", label: engine.tts?.provider === "elevenlabs" ? "ElevenLabs" : "TTS", side: "server" },
+        { id: `server:${engine.tts?.provider ?? "?"}`, kind: "tts", label: { deepgram: "Deepgram", elevenlabs: "ElevenLabs" }[engine.tts?.provider] ?? "TTS", side: "server" },
       ],
     }),
   }).catch((error) => log.warn("voice info post failed", { error: String(error) }));
